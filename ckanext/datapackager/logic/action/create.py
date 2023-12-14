@@ -364,7 +364,7 @@ def _send_to_db(package):
     """
     name_list = []
     package_id = package['id']
-    #log.debug(package)
+    log.debug(package)
 
     standard_inchi = package['inchi']
 
