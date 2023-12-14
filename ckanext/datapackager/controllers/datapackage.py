@@ -60,9 +60,9 @@ def import_datapackage():
         )
 
         if toolkit.check_ckan_version(min_version="2.9"):
-            return toolkit.redirect_to('dataset.read', id=dataset['name'])
+            return toolkit.redirect_to('dataset.search')
         else:
-            return toolkit.redirect_to('dataset_read', id=dataset['name'])
+            return toolkit.redirect_to('dataset_searh')
 
     except toolkit.ValidationError as e:
         errors = e.error_dict
