@@ -365,53 +365,59 @@ def _send_to_db(package):
     name_list = []
     package_id = package['id']
     log.debug(package)
+    try:
+        standard_inchi = package['inchi']
 
-    standard_inchi = package['inchi']
-
-    inchi_key = package['inchi_key']
-    smiles = package['smiles']
-    exact_mass = package['exactmass']
-    mol_formula = package['mol_formula']
+        inchi_key = package['inchi_key']
+        smiles = package['smiles']
+        exact_mass = package['exactmass']
+        mol_formula = package['mol_formula']
 
 
-    # Cursor and conect to DB
-    # connect to db
-    con = psycopg2.connect(user=DB_USER,
-                           host=DB_HOST,
-                           password=DB_pwd,
-                           dbname=DB_NAME)
+        # Cursor and conect to DB
+        # connect to db
+        con = psycopg2.connect(user=DB_USER,
+                               host=DB_HOST,
+                               password=DB_pwd,
+                               dbname=DB_NAME)
 
-    con.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-    # cur = con.cursor()
-    cur2 = con.cursor()
+        con.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+        # cur = con.cursor()
+        cur2 = con.cursor()
 
-    # Check if the row already exists, if not then INSERT
-    molecule_id = molecules._get_inchi_from_db(inchi_key)
+        # Check if the row already exists, if not then INSERT
+        molecule_id = molecules._get_inchi_from_db(inchi_key)
 
-    if molecule_id is None:
-        molecules.create(standard_inchi, smiles, inchi_key, exact_mass, mol_formula)
-        new_molecules_id = molecules._get_inchi_from_db(inchi_key)
-        new_molecules_id = new_molecules_id[0]
-        cur2.execute("INSERT INTO molecule_rel_data (molecules_id, package_id) VALUES (%s, %s)",
-                     (new_molecules_id, package_id))
-        log.debug('data sent to db')
-    else:
-        log.debug('Nothing to insert. Already existing')
-    # cur3 = con.cursor()
-    #
-    # for name in name_list:
-    #    cur3.execute("SELECT * FROM related_resources WHERE package_id = %s AND alternate_name = %s;", name)
-    #    #log.debug(f'db to {name}')
-    #    if cur3.fetchone() is None:
-    #        cur3.execute("INSERT INTO related_resources(id,package_id,alternate_name) VALUES(nextval('related_resources_id_seq'),%s,%s)", name)
-    #
-    ## commit cursor
-    # con.commit()
-    ## close cursor
-    # cur.close()
-    ## close connection
-    # con.close()
-    # log.debug('data sent to db')
+        if molecule_id is None:
+            molecules.create(standard_inchi, smiles, inchi_key, exact_mass, mol_formula)
+            new_molecules_id = molecules._get_inchi_from_db(inchi_key)
+            new_molecules_id = new_molecules_id[0]
+            cur2.execute("INSERT INTO molecule_rel_data (molecules_id, package_id) VALUES (%s, %s)",
+                         (new_molecules_id, package_id))
+            log.debug('data sent to db')
+        else:
+            log.debug('Nothing to insert. Already existing')
+        # cur3 = con.cursor()
+        #
+        # for name in name_list:
+        #    cur3.execute("SELECT * FROM related_resources WHERE package_id = %s AND alternate_name = %s;", name)
+        #    #log.debug(f'db to {name}')
+        #    if cur3.fetchone() is None:
+        #        cur3.execute("INSERT INTO related_resources(id,package_id,alternate_name) VALUES(nextval('related_resources_id_seq'),%s,%s)", name)
+        #
+        ## commit cursor
+        # con.commit()
+        ## close cursor
+        # cur.close()
+        ## close connection
+        # con.close()
+        # log.debug('data sent to db')
+    except Exception as e:
+        if e:
+            log.error(e)
+            pass
+        else:
+            pass
     return 0
 
 
