@@ -101,15 +101,16 @@ def package(fddict):
 
     outdict = dict(fddict)
 
-
-
     outdict['inchi'] = fddict['inChI']
     outdict['inchi_key'] = fddict['inChIKey']
     outdict['smiles'] = fddict['smiles']
+
     if fddict['molecularFormula']:
         outdict['mol_formula'] = fddict['molecularFormula']
     elif fddict['chemicalComposition']:
         outdict['mol_formula'] = fddict['chemicalComposition']
+    else:
+        outdict['mol_formula'] = '-'
     outdict['exactmass'] = fddict['monoisotopicMolecularWeight']
     outdict['metadata_published'] = fddict['datePublished']
     # map resources inside dataset

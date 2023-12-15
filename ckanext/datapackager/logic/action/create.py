@@ -367,7 +367,6 @@ def _send_to_db(package):
     log.debug(package)
     try:
         standard_inchi = package['inchi']
-
         inchi_key = package['inchi_key']
         smiles = package['smiles']
         exact_mass = package['exactmass']
