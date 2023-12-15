@@ -134,14 +134,16 @@ def package_create_from_datapackage(context, data_dict):
 
         log.debug(f'The final Res for dataset {res["id"]}: {res_final}')
         res_to_send.append(res_final)
-        #log.debug(f'list of ress: {res_to_send}')
+        #log.debug(f'list of ress: {res_to_send}').
 
+    package_show_context = {'model': model, 'session': Session,
+                            'ignore_auth': True}
     for dataset in res_to_send:
 
         updated_datasets = []
         try:
             # Update the dataset
-            updated_dataset = toolkit.get_action('package_update')(context, dataset)
+            updated_dataset = toolkit.get_action('package_update')(package_show_context, dataset)
             print(f"Updated dataset: {updated_dataset['id']}")
             updated_datasets.append(updated_dataset)
         except toolkit.ValidationError as e:
@@ -160,7 +162,7 @@ def _load_and_validate_datapackage(url=None, upload=None):
         if _upload_attribute_is_valid(upload):
             # You will get bytes values here. Convert them to decided values.
 
-            byte_data = upload.getvalue()
+            byte_data = upload.read()
             decoded_upload = byte_data.decode('utf-8')
             try:
                 json_data_upload_list = json.loads(decoded_upload)

@@ -111,6 +111,7 @@ def package(fddict):
         outdict['mol_formula'] = fddict['chemicalComposition']
     else:
         outdict['mol_formula'] = '-'
+
     outdict['exactmass'] = fddict['monoisotopicMolecularWeight']
     outdict['metadata_published'] = fddict['datePublished']
     # map resources inside dataset
