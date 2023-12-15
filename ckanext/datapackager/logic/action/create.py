@@ -249,16 +249,20 @@ def _package_create_with_unique_name(context, dataset_dict):
 
 
 def remove_extras_if_duplicates_exist(dataset_dict):
-    if 'extras' in dataset_dict:
-        extras_keys = [extra['key'] for extra in dataset_dict['extras']]
-        main_keys = set(dataset_dict.keys()) - {'extras'}
+    try:
+        if 'extras' in dataset_dict:
+            extras_keys = [extra['key'] for extra in dataset_dict['extras']]
+            main_keys = set(dataset_dict.keys()) - {'extras'}
 
-        # Check for any duplicates
-        if any(key in main_keys for key in extras_keys):
+            # Check for any duplicates
+            if any(key in main_keys for key in extras_keys):
             # If duplicates found, empty 'extras'
-            dataset_dict['extras'] = []
-    else:
-        log.debug('Nothing')
+                dataset_dict['extras'] = []
+        else:
+            log.debug('Nothing')
+    except Exception as e:
+        log.error(e)
+        pass
     return dataset_dict
 
 
