@@ -34,14 +34,14 @@ import datapackage
 
 log = logging.getLogger(__name__)
 
-DB_HOST = "localhost"
-DB_USER = "ckan_default"
-DB_NAME = "ckan_default"
-DB_pwd = "123456789"
+#DB_HOST = "localhost"
+#DB_USER = "ckan_default"
+#DB_NAME = "ckan_default"
+#DB_pwd = "123456789"
 
 
 def package_create_from_datapackage(context, data_dict):
-    '''Create a new dataset (package) from a Data Package file.
+    '''Create a new dataset (package) from a Data Package file. molecule
 
     :param url: url of the datapackage (optional if `upload` is defined)
     :type url: string
@@ -151,7 +151,6 @@ def package_create_from_datapackage(context, data_dict):
         except Exception as e:
             print(f"Unhandled error for dataset {dataset['id']}: {e}")
 
-    log.debug(f"Time take for this import: {total_time}")
     return updated_datasets
 
 
@@ -276,14 +275,16 @@ def _create_resources(dataset_id, context, resources):
     for resource in resources:
         resource['package_id'] = dataset_id
         if resource.get('data'):
+            log.debug(f'Creates Resources through inlines')
             _create_and_upload_resource_with_inline_data(context, resource)
         elif resource.get('path'):
+            log.debug(f'uploading Resource locally')
             _create_and_upload_local_resource(context, resource)
         else:
             # TODO: Investigate why in test_controller the resource['url'] is a list
             if type(resource['url']) is list:
                 resource['url'] = resource['url'][0]
-            # log.debug("RESOURCING")
+                log.debug("RESOURCING")
             try:
                 toolkit.get_action('resource_create')(context, resource)
             except Exception as e:
@@ -388,26 +389,28 @@ def _send_to_db(package):
         exact_mass = package['exactmass']
         mol_formula = package['mol_formula']
 
-        # Cursor and conect to DB
-        # connect to db
-        con = psycopg2.connect(user=DB_USER,
-                               host=DB_HOST,
-                               password=DB_pwd,
-                               dbname=DB_NAME)
-
-        con.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-        # cur = con.cursor()
-        cur2 = con.cursor()
+        ## Cursor and conect to DB
+        ## connect to db
+        # con = psycopg2.connect(user=DB_USER,
+        #                       host=DB_HOST,
+        #                       password=DB_pwd,
+        #                       dbname=DB_NAME)
+        #
+        # con.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+        ## cur = con.cursor()
+        # cur2 = con.cursor()
 
         # Check if the row already exists, if not then INSERT
         molecule_id = molecules._get_inchi_from_db(inchi_key)
+        log.debug(f"Current molecule_d  {molecule_id}")
 
-        if molecule_id is None:
+        # TODO:
+        if not molecule_id:
             molecules.create(standard_inchi, smiles, inchi_key, exact_mass, mol_formula)
             new_molecules_id = molecules._get_inchi_from_db(inchi_key)
             new_molecules_id = new_molecules_id[0]
-            cur2.execute("INSERT INTO molecule_rel_data (molecules_id, package_id) VALUES (%s, %s)",
-                         (new_molecules_id, package_id))
+            log.debug(f"New molecule {new_molecules_id}")
+            mol_rel_data.create(new_molecules_id, package_id)
             log.debug('data sent to db')
         else:
             log.debug('Nothing to insert. Already existing')
