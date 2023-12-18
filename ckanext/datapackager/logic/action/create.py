@@ -107,7 +107,9 @@ def package_create_from_datapackage(context, data_dict):
         resources_data = res['resources']
 
         if not resources_data:
+            log.debug(f'{resource_data} is not present')
             _create_resources(dataset_id, context, resources)
+
         # resources_to_display = res['resources']
 
         # if resources:
@@ -248,6 +250,7 @@ def _package_create_with_unique_name(context, dataset_dict):
                     res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
                 except KeyError as e:
                     log.error(f'Last stage of error {e}')
+            pass
 
             log.debug(f'res created with error {res}')
 
