@@ -104,7 +104,10 @@ def package_create_from_datapackage(context, data_dict):
 
         dataset_id = res['id']
 
-        _create_resources(dataset_id, context, resources)
+        resources_data = res['resources']
+
+        if not resources_data:
+            _create_resources(dataset_id, context, resources)
         # resources_to_display = res['resources']
 
         # if resources:
@@ -228,7 +231,7 @@ def _package_create_with_unique_name(context, dataset_dict):
             log.debug(f"res created {res}")
 
         except toolkit.ValidationError as e:
-            log.debug(f'NEW package is being created with an exception')
+            log.debug(f'NEW package is being created with an exception: {e}')
             if 'That URL is already in use.' in e.error_dict.get('name', []) or 'Dataset id already exists' in e.error_dict.get('id', []) :
                 random_num = random.randint(0, 9999999999)
                 name = '{name}-{rand}'.format(name=dataset_dict.get('name', 'dp'),
@@ -286,14 +289,16 @@ def _create_resources(dataset_id, context, resources):
             if type(resource['url']) is list:
                 resource['url'] = resource['url'][0]
                 log.debug("RESOURCING")
-            try:
-                toolkit.get_action('resource_create')(context, resource)
-            except Exception as e:
-                # if 'There is a schema field with the same name' in e.error_dict.get('extras', []):
-                if e is True:
-                    toolkit.get_action('resource_update')(context, resource)
-                else:
-                    pass
+
+                try:
+                    toolkit.get_action('resource_create')(context, resource)
+                    log.debug("Create a new resource")
+                except Exception as e:
+                    # if 'There is a schema field with the same name' in e.error_dict.get('extras', []):
+                    if e is True:
+                        toolkit.get_action('resource_update')(context, resource)
+                    else:
+                        pass
             # log.debug('Resource created')
 
 
