@@ -212,7 +212,7 @@ def _package_create_with_unique_name(context, dataset_dict):
             log.debug(f' res skipped: {res}')
 
         except toolkit.ValidationError as e:
-            log.error(e)
+            log.error(f'Validation error at package Create {e}')
             if 'There is a schema field with the same name' in e.error_dict.get('extras', []):
                 res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
             else:
@@ -239,7 +239,7 @@ def _package_create_with_unique_name(context, dataset_dict):
                     if dataset_dict['license']:
                         res['license_id'] = _extract_license_id(package_show_context, dataset_dict)
                 except KeyError as e:
-                    log.error(e)
+                    log.error(f'New Packaged with expection not created: {e}')
             else:
                 try:
                     res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
@@ -267,7 +267,7 @@ def remove_extras_if_duplicates_exist(dataset_dict):
         else:
             log.debug('Nothing')
     except Exception as e:
-        log.error(e)
+        log.error(f'remove_extras_if_duplicates_exist: {e}')
         pass
     return dataset_dict
 
@@ -428,7 +428,7 @@ def _send_to_db(package):
 
     except Exception as e:
         if e:
-            log.error(e)
+            log.error(f'Sent to db not possible because of this error {e}')
             pass
         else:
             pass
@@ -452,7 +452,7 @@ def _import_molecule_images(package):
                 log.debug("Molecule Image generated for %s", package_id)
 
         except Exception as e:
-            log.error(e)
+            log.error(f"_import_molecule_images not possible: {e}")
 
     return 0
 
