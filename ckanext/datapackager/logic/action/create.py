@@ -34,10 +34,11 @@ import datapackage
 
 log = logging.getLogger(__name__)
 
-#DB_HOST = "localhost"
-#DB_USER = "ckan_default"
-#DB_NAME = "ckan_default"
-#DB_pwd = "123456789"
+
+# DB_HOST = "localhost"
+# DB_USER = "ckan_default"
+# DB_NAME = "ckan_default"
+# DB_pwd = "123456789"
 
 
 def package_create_from_datapackage(context, data_dict):
@@ -403,32 +404,28 @@ def _send_to_db(package):
         # Check if the row already exists, if not then INSERT
         molecule_id = molecules._get_inchi_from_db(inchi_key)
         log.debug(f"Current molecule_d  {molecule_id}")
+        relation_value = mol_rel_data.get_mol_formula_by_package_id(package_id)
+        log.debug(f"Here is the relation {relation_value}")
 
-        # TODO:
-        if not molecule_id:
+        # TODO: Check if relationship exists or not.
+
+        if not molecule_id:  # if there is no molecule at all, it inserts rows into molecules and molecule_rel_data dt
             molecules.create(standard_inchi, smiles, inchi_key, exact_mass, mol_formula)
             new_molecules_id = molecules._get_inchi_from_db(inchi_key)
             new_molecules_id = new_molecules_id[0]
+            # Check if relaionship exists
             log.debug(f"New molecule {new_molecules_id}")
             mol_rel_data.create(new_molecules_id, package_id)
-            log.debug('data sent to db')
-        else:
+            log.debug('data sent to molecules and relation db')
+
+        elif not relation_value:  # if the molecule exists, but the relation doesn't exist, it create the relation
+            # with molecule ID
+            log.debug("Relationship must be created")
+            mol_rel_data.create(molecule_id[0], package_id)
+            log.debug('data sent to mol_relation db')
+        else:  # if the both exists
             log.debug('Nothing to insert. Already existing')
-        # cur3 = con.cursor()
-        #
-        # for name in name_list:
-        #    cur3.execute("SELECT * FROM related_resources WHERE package_id = %s AND alternate_name = %s;", name)
-        #    #log.debug(f'db to {name}')
-        #    if cur3.fetchone() is None:
-        #        cur3.execute("INSERT INTO related_resources(id,package_id,alternate_name) VALUES(nextval('related_resources_id_seq'),%s,%s)", name)
-        #
-        ## commit cursor
-        # con.commit()
-        ## close cursor
-        # cur.close()
-        ## close connection
-        # con.close()
-        # log.debug('data sent to db')
+
     except Exception as e:
         if e:
             log.error(e)
