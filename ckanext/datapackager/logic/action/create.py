@@ -200,7 +200,7 @@ def _load_and_validate_datapackage(url=None, upload=None):
 
 def _package_create_with_unique_name(context, dataset_dict):
     res = None
-    package_dict_form = 'package_show'
+
     package_show_context = {'model': model, 'session': Session,
                             'ignore_auth': True}
 
@@ -264,7 +264,7 @@ def _package_create_with_unique_name(context, dataset_dict):
                 except toolkit.ValidationError as e:
                     log.error(f'New Packaged with exception not created: {e}')
                     pass
-                    return 0
+                    return dataset_dict
             else:
                 return 0
 
