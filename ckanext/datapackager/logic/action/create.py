@@ -149,8 +149,9 @@ def package_create_from_datapackage(context, data_dict):
 
     package_show_context = {'model': model, 'session': Session,
                             'ignore_auth': True}
+    iteration_count = 0  # Initialize counter
     for dataset in res_to_send:
-
+        iteration_count += 1
         try:
             # Update the dataset
             updated_dataset = toolkit.get_action('package_update')(package_show_context, dataset)
@@ -160,7 +161,7 @@ def package_create_from_datapackage(context, data_dict):
             log.debug(f"Error updating dataset {dataset['id']}: {e.error_dict}")
         except Exception as e:
             log.debug(f"Unhandled error for dataset {dataset['id']}: {e}")
-
+    log.debug(f'Number of dataset updated {iteration_count}')
     return updated_datasets
 
 
