@@ -241,12 +241,15 @@ def _package_create_with_unique_name(context, dataset_dict):
                 name = '{name}-{rand}'.format(name=dataset_dict.get('name', 'dp'),
                                               rand=random_num)
                 dataset_dict['name'] = name
-                res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
+
                 try:
+                    res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
                     if dataset_dict['license']:
                         res['license_id'] = _extract_license_id(package_show_context, dataset_dict)
                 except KeyError as e:
                     log.error(f'New Packaged with exception not created: {e}')
+                    pass
+
             elif 'Dataset id already exists' in e.error_dict.get('id', []):
                 random_num = random.randint(0, 9999999999)
                 id = '{name}-{rand}'.format(name=dataset_dict.get('name', 'dp'),
