@@ -252,6 +252,7 @@ def _package_create_with_unique_name(context, dataset_dict):
 
 
 def _handle_existing_package(context, dataset_dict):
+    log.debug(f'Handle existing package')
     try:
         log.info(f'Package with GUID {dataset_dict["id"]} exists and is skipped')
         res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
@@ -263,6 +264,7 @@ def _handle_existing_package(context, dataset_dict):
 
 
 def _create_new_package(context, dataset_dict):
+    log.debug(f'Create a new package')
     try:
         log.debug('NEW package is being created')
         res = toolkit.get_action('package_create')(context, dataset_dict)
@@ -278,6 +280,8 @@ def _create_new_package(context, dataset_dict):
 
 
 def _handle_package_creation_exception(context, dataset_dict, e):
+    log.debug(f'Handle package creation exception')
+
     if 'That URL is already in use.' in e.error_dict.get('name', []):
         dataset_dict['name'] = _generate_random_name(dataset_dict)
     elif 'Dataset id already exists' in e.error_dict.get('id', []):
