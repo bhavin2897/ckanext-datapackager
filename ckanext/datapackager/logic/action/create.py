@@ -159,6 +159,150 @@ def package_create_from_datapackage(context, data_dict):
     return updated_datasets
 
 
+# def _package_create_with_unique_name(context, dataset_dict):
+#     res = None
+#
+#     package_show_context = {'model': model, 'session': Session,
+#                             'ignore_auth': True}
+#
+#     dataset_dict['name'] = dataset_dict['identifier'].lower()
+#     dataset_dict['id'] = munge_title_to_name(dataset_dict['name'])
+#     # log.debug(f'dataset_dict: {dataset_dict}')
+#     existing_package_dict = _find_existing_package(dataset_dict, context)
+#
+#     if existing_package_dict:
+#         try:
+#             log.info('Package with GUID %s exists and is skipped' % dataset_dict['id'])
+#             res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
+#             log.debug(f' res skipped: {res}')
+#
+#         except toolkit.ValidationError as e:
+#             log.error(f'Validation error at package Create {e}')
+#             if 'There is a schema field with the same name' in e.error_dict.get('extras', []):
+#                 res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
+#             else:
+#                 res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
+#             log.error(f' res show with error {res}')
+#             pass
+#     else:
+#         try:
+#             log.debug(f'NEW package is being created')
+#
+#             res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
+#
+#             if dataset_dict['license']:
+#                 res['license_id'] = _extract_license_id(context, dataset_dict)
+#             log.debug(f"res created {res}")
+#
+#         except toolkit.ValidationError as e:
+#             log.error(f'NEW package is not being created because of an exception: {e}')
+#
+#             if 'That URL is already in use.' in e.error_dict.get('name', []):
+#                 random_num = random.randint(0, 9999999999)
+#                 name = '{name}-{rand}'.format(name=dataset_dict.get('name', 'dp'),
+#                                               rand=random_num)
+#                 dataset_dict['name'] = name
+#                 try:
+#                     res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
+#                     if dataset_dict['license']:
+#                         res['license_id'] = _extract_license_id(package_show_context, dataset_dict)
+#                 except toolkit.ValidationError as e:
+#                     log.error(f'New Packaged with exception not created: {e}')
+#                     pass
+#
+#             elif 'Dataset id already exists' in e.error_dict.get('id', []):
+#                 random_num = random.randint(0, 9999999999)
+#                 id = '{name}-{rand}'.format(name=dataset_dict.get('name', 'dp'),
+#                                             rand=random_num)
+#
+#                 dataset_dict['id'] = id
+#
+#                 try:
+#                     res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
+#                     if dataset_dict['license']:
+#                         res['license_id'] = _extract_license_id(package_show_context, dataset_dict)
+#                 except toolkit.ValidationError as e:
+#                     log.error(f'New Packaged with exception not created: {e}')
+#                     pass
+#                     return toolkit.get_action('package_create')(package_show_context, dataset_dict)
+#             else:
+#                 return 0
+#
+#
+#             #log.debug(f'res created with error {res}')
+#
+#     # log.debug(f'res_final from package_create {res}')
+#     res_final = remove_extras_if_duplicates_exist(res)
+#     # log.debug(f'{res}')
+#     return res_final
+
+def _package_create_with_unique_name(context, dataset_dict):
+    dataset_dict['name'] = dataset_dict['identifier'].lower()
+    dataset_dict['id'] = munge_title_to_name(dataset_dict['name'])
+
+    existing_package_dict = _find_existing_package(dataset_dict, context)
+
+    if existing_package_dict:
+        return _handle_existing_package(context, dataset_dict)
+    else:
+        return _create_new_package(context, dataset_dict)
+
+
+def _handle_existing_package(context, dataset_dict):
+    try:
+        log.info(f'Package with GUID {dataset_dict["id"]} exists and is skipped')
+        res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
+        log.debug(f'Result skipped: {res}')
+        return remove_extras_if_duplicates_exist(res)
+    except toolkit.ValidationError as e:
+        log.error(f'Validation error at package Create {e}')
+        return 0  # Or a more appropriate error handling
+
+
+def _create_new_package(context, dataset_dict):
+    try:
+        log.debug('NEW package is being created')
+        res = toolkit.get_action('package_create')(context, dataset_dict)
+
+        if dataset_dict.get('license'):
+            res['license_id'] = _extract_license_id(context, dataset_dict)
+        log.debug(f"Result created {res}")
+        return remove_extras_if_duplicates_exist(res)
+
+    except toolkit.ValidationError as e:
+        log.error(f'Exception during package creation: {e}')
+        return _handle_package_creation_exception(context, dataset_dict, e)
+
+
+def _handle_package_creation_exception(context, dataset_dict, e):
+    if 'That URL is already in use.' in e.error_dict.get('name', []):
+        dataset_dict['name'] = _generate_random_name(dataset_dict)
+    elif 'Dataset id already exists' in e.error_dict.get('id', []):
+        dataset_dict['id'] = _generate_random_id(dataset_dict)
+
+    try:
+        res = toolkit.get_action('package_create')(context, dataset_dict)
+        if dataset_dict.get('license'):
+            res['license_id'] = _extract_license_id(context, dataset_dict)
+        return remove_extras_if_duplicates_exist(res)
+    except toolkit.ValidationError as e:
+        log.error(f'Failed to create package with exception: {e}')
+        return 0  # Or a more appropriate error handling
+
+
+def _generate_random_name(dataset_dict):
+    random_num = random.randint(0, 9999999999)
+    return f"{dataset_dict.get('name', 'dp')}-{random_num}"
+
+
+def _generate_random_id(dataset_dict):
+    random_num = random.randint(0, 9999999999)
+    return f"{dataset_dict.get('name', 'dp')}-{random_num}"
+
+
+# You should also define `remove_extras_if_duplicates_exist` function if not already defined.
+
+
 def _load_and_validate_datapackage(url=None, upload=None):
     dp_list = []
     try:
@@ -196,85 +340,6 @@ def _load_and_validate_datapackage(url=None, upload=None):
     #    raise toolkit.ValidationError(msg)
 
     return dp_list
-
-
-def _package_create_with_unique_name(context, dataset_dict):
-    res = None
-
-    package_show_context = {'model': model, 'session': Session,
-                            'ignore_auth': True}
-
-    dataset_dict['name'] = dataset_dict['identifier'].lower()
-    dataset_dict['id'] = munge_title_to_name(dataset_dict['name'])
-    # log.debug(f'dataset_dict: {dataset_dict}')
-    existing_package_dict = _find_existing_package(dataset_dict, context)
-
-    if existing_package_dict:
-        try:
-            log.info('Package with GUID %s exists and is skipped' % dataset_dict['id'])
-            res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
-            log.debug(f' res skipped: {res}')
-
-        except toolkit.ValidationError as e:
-            log.error(f'Validation error at package Create {e}')
-            if 'There is a schema field with the same name' in e.error_dict.get('extras', []):
-                res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
-            else:
-                res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
-            log.error(f' res show with error {res}')
-            pass
-    else:
-        try:
-            log.debug(f'NEW package is being created')
-
-            res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
-
-            if dataset_dict['license']:
-                res['license_id'] = _extract_license_id(context, dataset_dict)
-            log.debug(f"res created {res}")
-
-        except toolkit.ValidationError as e:
-            log.error(f'NEW package is not being created because of an exception: {e}')
-
-            if 'That URL is already in use.' in e.error_dict.get('name', []):
-                random_num = random.randint(0, 9999999999)
-                name = '{name}-{rand}'.format(name=dataset_dict.get('name', 'dp'),
-                                              rand=random_num)
-                dataset_dict['name'] = name
-
-                try:
-                    res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
-                    if dataset_dict['license']:
-                        res['license_id'] = _extract_license_id(package_show_context, dataset_dict)
-                except toolkit.ValidationError as e:
-                    log.error(f'New Packaged with exception not created: {e}')
-                    pass
-
-            elif 'Dataset id already exists' in e.error_dict.get('id', []):
-                random_num = random.randint(0, 9999999999)
-                id = '{name}-{rand}'.format(name=dataset_dict.get('name', 'dp'),
-                                            rand=random_num)
-
-                dataset_dict['id'] = id
-
-                try:
-                    res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
-                    if dataset_dict['license']:
-                        res['license_id'] = _extract_license_id(package_show_context, dataset_dict)
-                except toolkit.ValidationError as e:
-                    log.error(f'New Packaged with exception not created: {e}')
-                    pass
-                    return toolkit.get_action('package_create')(package_show_context, dataset_dict)
-            else:
-                return 0
-
-
-            #log.debug(f'res created with error {res}')
-
-    # log.debug(f'res_final from package_create {res}')
-    res_final = remove_extras_if_duplicates_exist(res)
-    # log.debug(f'{res}')
-    return res_final
 
 
 def remove_extras_if_duplicates_exist(dataset_dict):
