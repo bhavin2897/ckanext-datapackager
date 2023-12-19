@@ -226,6 +226,7 @@ def _package_create_with_unique_name(context, dataset_dict):
     else:
         try:
             log.debug(f'NEW package is being created')
+
             res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
 
             if dataset_dict['license']:
@@ -234,11 +235,23 @@ def _package_create_with_unique_name(context, dataset_dict):
 
         except toolkit.ValidationError as e:
             log.debug(f'NEW package is being created with an exception: {e}')
-            if 'That URL is already in use.' in e.error_dict.get('name', []) or 'Dataset id already exists' in e.error_dict.get('id', []) :
+            if 'That URL is already in use.' in e.error_dict.get('name', []):
                 random_num = random.randint(0, 9999999999)
                 name = '{name}-{rand}'.format(name=dataset_dict.get('name', 'dp'),
                                               rand=random_num)
                 dataset_dict['name'] = name
+                res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
+                try:
+                    if dataset_dict['license']:
+                        res['license_id'] = _extract_license_id(package_show_context, dataset_dict)
+                except KeyError as e:
+                    log.error(f'New Packaged with exception not created: {e}')
+            elif 'Dataset id already exists' in e.error_dict.get('id', []):
+                random_num = random.randint(0, 9999999999)
+                id = '{name}-{rand}'.format(name=dataset_dict.get('name', 'dp'),
+                                              rand=random_num)
+
+                dataset_dict['id'] = id
                 res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
                 try:
                     if dataset_dict['license']:
