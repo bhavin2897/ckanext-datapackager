@@ -146,16 +146,15 @@ def package_create_from_datapackage(context, data_dict):
                             'ignore_auth': True}
     for dataset in res_to_send:
 
-        # updated_datasets = []
         try:
             # Update the dataset
             updated_dataset = toolkit.get_action('package_update')(package_show_context, dataset)
-            print(f"Updated dataset: {updated_dataset['id']}")
+            log.debug(f"Updated dataset: {updated_dataset['id']}")
             updated_datasets.append(updated_dataset)
         except toolkit.ValidationError as e:
-            print(f"Error updating dataset {dataset['id']}: {e.error_dict}")
+            log.debug(f"Error updating dataset {dataset['id']}: {e.error_dict}")
         except Exception as e:
-            print(f"Unhandled error for dataset {dataset['id']}: {e}")
+            log.debug(f"Unhandled error for dataset {dataset['id']}: {e}")
 
     return updated_datasets
 
@@ -207,7 +206,7 @@ def _package_create_with_unique_name(context, dataset_dict):
 
     dataset_dict['name'] = dataset_dict['identifier'].lower()
     dataset_dict['id'] = munge_title_to_name(dataset_dict['name'])
-    log.debug(f'dataset_dict: {dataset_dict}')
+    # log.debug(f'dataset_dict: {dataset_dict}')
     existing_package_dict = _find_existing_package(dataset_dict, context)
 
     if existing_package_dict:
@@ -253,7 +252,7 @@ def _package_create_with_unique_name(context, dataset_dict):
             elif 'Dataset id already exists' in e.error_dict.get('id', []):
                 random_num = random.randint(0, 9999999999)
                 id = '{name}-{rand}'.format(name=dataset_dict.get('name', 'dp'),
-                                              rand=random_num)
+                                            rand=random_num)
 
                 dataset_dict['id'] = id
                 res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
