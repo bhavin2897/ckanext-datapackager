@@ -246,9 +246,9 @@ def _package_create_with_unique_name(context, dataset_dict):
     existing_package_dict = _find_existing_package(dataset_dict, package_show_context)
 
     if existing_package_dict:
-        return _handle_existing_package(package_show_context, dataset_dict)
+        return _handle_existing_package(context, dataset_dict)
     else:
-        return _create_new_package(package_show_context, dataset_dict)
+        return _create_new_package(context, dataset_dict)
 
 
 def _handle_existing_package(context, dataset_dict):
