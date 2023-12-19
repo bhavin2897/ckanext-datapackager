@@ -234,7 +234,7 @@ def _package_create_with_unique_name(context, dataset_dict):
             log.debug(f"res created {res}")
 
         except toolkit.ValidationError as e:
-            log.debug(f'NEW package is being created with an exception: {e}')
+            log.debug(f'NEW package is not being created because of an exception: {e}')
 
             if 'That URL is already in use.' in e.error_dict.get('name', []):
                 random_num = random.randint(0, 9999999999)
@@ -264,15 +264,10 @@ def _package_create_with_unique_name(context, dataset_dict):
                     log.error(f'New Packaged with exception not created: {e}')
                     pass
             else:
-                try:
-                    res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
-                except KeyError as e:
-                    log.error(f'Last stage of error {e}')
-                    pass
-            return 0
+                return 0
             pass
 
-            log.debug(f'res created with error {res}')
+            #log.debug(f'res created with error {res}')
 
     # log.debug(f'res_final from package_create {res}')
     res_final = remove_extras_if_duplicates_exist(res)
