@@ -221,7 +221,7 @@ def _package_create_with_unique_name(context, dataset_dict):
                 res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
             else:
                 res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
-            log.debug(f' res show with error {res}')
+            log.error(f' res show with error {res}')
             pass
     else:
         try:
@@ -234,7 +234,7 @@ def _package_create_with_unique_name(context, dataset_dict):
             log.debug(f"res created {res}")
 
         except toolkit.ValidationError as e:
-            log.debug(f'NEW package is not being created because of an exception: {e}')
+            log.error(f'NEW package is not being created because of an exception: {e}')
 
             if 'That URL is already in use.' in e.error_dict.get('name', []):
                 random_num = random.randint(0, 9999999999)
