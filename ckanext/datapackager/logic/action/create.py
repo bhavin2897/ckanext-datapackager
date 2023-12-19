@@ -256,16 +256,18 @@ def _package_create_with_unique_name(context, dataset_dict):
                                             rand=random_num)
 
                 dataset_dict['id'] = id
-                res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
+
                 try:
+                    res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
                     if dataset_dict['license']:
                         res['license_id'] = _extract_license_id(package_show_context, dataset_dict)
-                except KeyError as e:
+                except toolkit.ValidationError as e:
                     log.error(f'New Packaged with exception not created: {e}')
                     pass
+                    return 0
             else:
                 return 0
-            pass
+
 
             #log.debug(f'res created with error {res}')
 
