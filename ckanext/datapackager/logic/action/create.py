@@ -240,12 +240,15 @@ def _package_create_with_unique_name(context, dataset_dict):
     dataset_dict['name'] = dataset_dict['identifier'].lower()
     dataset_dict['id'] = munge_title_to_name(dataset_dict['name'])
 
-    existing_package_dict = _find_existing_package(dataset_dict, context)
+    package_show_context = {'model': model, 'session': Session,
+                            'ignore_auth': True}
+
+    existing_package_dict = _find_existing_package(dataset_dict, package_show_context)
 
     if existing_package_dict:
-        return _handle_existing_package(context, dataset_dict)
+        return _handle_existing_package(package_show_context, dataset_dict)
     else:
-        return _create_new_package(context, dataset_dict)
+        return _create_new_package(package_show_context, dataset_dict)
 
 
 def _handle_existing_package(context, dataset_dict):
