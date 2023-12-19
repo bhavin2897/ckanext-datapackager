@@ -264,7 +264,7 @@ def _package_create_with_unique_name(context, dataset_dict):
                 except toolkit.ValidationError as e:
                     log.error(f'New Packaged with exception not created: {e}')
                     pass
-                    return dataset_dict
+                    return toolkit.get_action('package_create')(package_show_context, dataset_dict)
             else:
                 return 0
 
