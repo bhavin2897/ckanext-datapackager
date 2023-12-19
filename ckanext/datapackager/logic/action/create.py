@@ -223,6 +223,7 @@ def _package_create_with_unique_name(context, dataset_dict):
             else:
                 res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
             log.debug(f' res show with error {res}')
+            pass
     else:
         try:
             log.debug(f'NEW package is being created')
@@ -258,11 +259,13 @@ def _package_create_with_unique_name(context, dataset_dict):
                         res['license_id'] = _extract_license_id(package_show_context, dataset_dict)
                 except KeyError as e:
                     log.error(f'New Packaged with exception not created: {e}')
+                    pass
             else:
                 try:
                     res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
                 except KeyError as e:
                     log.error(f'Last stage of error {e}')
+                    pass
             pass
 
             log.debug(f'res created with error {res}')
