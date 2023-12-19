@@ -104,6 +104,7 @@ def package_create_from_datapackage(context, data_dict):
         try:
             res = _package_create_with_unique_name(package_show_context, dataset_dict)
         except:
+            log.debug('Package skipped')
             pass
 
         dataset_id = res['id']
