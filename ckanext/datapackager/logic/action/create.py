@@ -207,7 +207,7 @@ def _package_create_with_unique_name(context, dataset_dict):
 
     dataset_dict['name'] = dataset_dict['identifier'].lower()
     dataset_dict['id'] = munge_title_to_name(dataset_dict['name'])
-
+    log.debug(f'dataset_dict: {dataset_dict}')
     existing_package_dict = _find_existing_package(dataset_dict, context)
 
     if existing_package_dict:
