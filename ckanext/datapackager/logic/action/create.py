@@ -99,9 +99,10 @@ def package_create_from_datapackage(context, data_dict):
         # Create as draft by default so if there's any issue on creating the
         # resources and we're unable to purge the dataset, at least it's not shown.
         dataset_dict['state'] = 'draft'
-
+        package_show_context = {'model': model, 'session': Session,
+                               'ignore_auth': True}
         try:
-            res = _package_create_with_unique_name(context, dataset_dict)
+            res = _package_create_with_unique_name(package_show_context, dataset_dict)
         except:
             pass
 
