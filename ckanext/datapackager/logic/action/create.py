@@ -100,7 +100,10 @@ def package_create_from_datapackage(context, data_dict):
         # resources and we're unable to purge the dataset, at least it's not shown.
         dataset_dict['state'] = 'draft'
 
-        res = _package_create_with_unique_name(context, dataset_dict)
+        try:
+            res = _package_create_with_unique_name(context, dataset_dict)
+        except:
+            pass
 
         dataset_id = res['id']
 
@@ -248,7 +251,7 @@ def _package_create_with_unique_name(context, dataset_dict):
     if existing_package_dict:
         return _handle_existing_package(context, dataset_dict)
     else:
-        return _create_new_package(context, dataset_dict)
+        return _create_new_package(package_show_context, dataset_dict)
 
 
 def _handle_existing_package(context, dataset_dict):
