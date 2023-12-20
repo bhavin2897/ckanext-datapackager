@@ -100,7 +100,7 @@ def package_create_from_datapackage(context, data_dict):
         # resources and we're unable to purge the dataset, at least it's not shown.
         dataset_dict['state'] = 'draft'
         package_show_context = {'model': model, 'session': Session,
-                               'ignore_auth': True}
+                                'ignore_auth': True}
         try:
             res = _package_create_with_unique_name(package_show_context, dataset_dict)
         except Exception as e:
@@ -113,27 +113,15 @@ def package_create_from_datapackage(context, data_dict):
 
         if not resources_data:
             log.debug(f'{resource_data} is not present')
-            _create_resources(dataset_id, context, resources)
-
-        # resources_to_display = res['resources']
-
-        # if resources:
-        #    package_show_context = {'model': model, 'session': Session,
-        #                            'ignore_auth': True}
-        #    try:
-        #        _create_resources(dataset_id, context, resources)
-        #        res = toolkit.get_action('package_show')(
-        #            package_show_context, {'id': dataset_id})
-        #
-        #    except Exception as e:
-        #        log.error(e)
-        #        try:
-        #            toolkit.get_action('package_delete')(
-        #                context, {'id': dataset_id})
-        #        except Exception as e2:
-        #            six.raise_from(e, e2)
-        #        else:
-        #            raise e
+            try:
+                _create_resources(dataset_id, context, resources)
+            except Exception as e:
+                log.error(e)
+                try:
+                    toolkit.get_action('package_delete')(
+                        context, {'id': dataset_id})
+                except Exception as e2:
+                    six.raise_from(e, e2)
 
         res['state'] = 'active'
 
@@ -143,7 +131,7 @@ def package_create_from_datapackage(context, data_dict):
         log.debug(f'dataset {res["id"]} will be updated')
         res_final = remove_extras_if_duplicates_exist(res)
 
-        log.debug(f'The final Res for dataset {res["id"]}: {res_final}')
+        # log.debug(f'The final Res for dataset {res["id"]}: {res_final}')
         res_to_send.append(res_final)
         # log.debug(f'list of ress: {res_to_send}').
 
@@ -262,13 +250,12 @@ def _handle_existing_package(context, dataset_dict):
     try:
         log.info(f'Package with GUID {dataset_dict["id"]} exists and is skipped')
         res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
-        log.debug(f'packagesskipped is  {res}')
 
         if dataset_dict['license']:
             log.debug(f'{res}')
             res['license_id'] = _extract_license_id(context, dataset_dict)
 
-        log.debug(f'Result skipped: {res}')
+        # log.debug(f'Result skipped: {res}')
 
         return remove_extras_if_duplicates_exist(res)
     except toolkit.ValidationError as e:
@@ -284,7 +271,7 @@ def _create_new_package(context, dataset_dict):
 
         if dataset_dict.get('license'):
             res['license_id'] = _extract_license_id(context, dataset_dict)
-        log.debug(f"Result created {res}")
+        # log.debug(f"Result created {res}")
         return remove_extras_if_duplicates_exist(res)
 
     except toolkit.ValidationError as e:
@@ -318,9 +305,6 @@ def _generate_random_name(dataset_dict):
 def _generate_random_id(dataset_dict):
     random_num = random.randint(0, 9999999999)
     return f"{dataset_dict.get('name', 'dp')}-{random_num}"
-
-
-# You should also define `remove_extras_if_duplicates_exist` function if not already defined.
 
 
 def _load_and_validate_datapackage(url=None, upload=None):
