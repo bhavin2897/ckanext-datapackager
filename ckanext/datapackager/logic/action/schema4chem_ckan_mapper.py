@@ -119,6 +119,9 @@ def package(fddict):
     if 'url' in fddict:
         outdict['resources'] = _extract_resources(fddict)
 
+    if 'license' in fddict:
+        outdict['license'] = fddict['license']
+
     try:
         outdict['title'] = fddict['name']
         outdict['name'] = fddict['identifier'].lower()
@@ -129,13 +132,13 @@ def package(fddict):
             outdict['measurement_technique'] = measurement_technique[0]['name']
             outdict['measurement_technique_iri'] = measurement_technique[0]['url']
 
-        if 'licenses' in outdict and outdict['licenses']:
-            outdict['license_id'] = outdict['licenses'][0].get('name')
-            outdict['license_title'] = outdict['licenses'][0].get('title')
-            outdict['license_url'] = outdict['licenses'][0].get('path')
-            # remove it so it won't get put in extras
-            if len(outdict['licenses']) == 1:
-                outdict.pop('licenses', None)
+        #if 'licenses' in outdict and outdict['licenses']:
+        #    outdict['license_id'] = outdict['licenses'][0].get('name')
+        #    outdict['license_title'] = outdict['licenses'][0].get('title')
+        #    outdict['license_url'] = outdict['licenses'][0].get('path')
+        #    # remove it so it won't get put in extras
+        #    if len(outdict['licenses']) == 1:
+        #        outdict.pop('licenses', None)
 
         if outdict.get('contributors'):
             for c in outdict['contributors']:

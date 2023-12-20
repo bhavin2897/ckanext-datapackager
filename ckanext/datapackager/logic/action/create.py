@@ -103,8 +103,8 @@ def package_create_from_datapackage(context, data_dict):
                                'ignore_auth': True}
         try:
             res = _package_create_with_unique_name(package_show_context, dataset_dict)
-        except:
-            log.debug('Package skipped')
+        except Exception as e:
+            log.debug(f'Package skipped {e}')
             pass
 
         dataset_id = res['id']
@@ -258,11 +258,18 @@ def _package_create_with_unique_name(context, dataset_dict):
 
 
 def _handle_existing_package(context, dataset_dict):
-    log.debug(f'Handle existing package')
+    log.debug(f'Handle existing package {dataset_dict}')
     try:
         log.info(f'Package with GUID {dataset_dict["id"]} exists and is skipped')
         res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
+        log.debug(f'packagesskipped is  {res}')
+
+        if dataset_dict['license']:
+            log.debug(f'{res}')
+            res['license_id'] = _extract_license_id(context, dataset_dict)
+
         log.debug(f'Result skipped: {res}')
+
         return remove_extras_if_duplicates_exist(res)
     except toolkit.ValidationError as e:
         log.error(f'Validation error at package Create {e}')
@@ -455,6 +462,7 @@ def _extract_license_id(context, content):
     try:
         content_license = content['license']
         license_list = toolkit.get_action('license_list')(context.copy(), {})
+
         for license_name in license_list:
             if content_license == license_name['id'] or content_license == license_name['url'] or content_license == \
                     license_name['title']:
