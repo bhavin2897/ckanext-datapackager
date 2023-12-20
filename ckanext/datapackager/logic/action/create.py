@@ -251,9 +251,14 @@ def _handle_existing_package(context, dataset_dict):
         log.info(f'Package with GUID {dataset_dict["id"]} exists and is skipped')
         res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
 
-        if dataset_dict['license']:
+        if not res['license_id']:
             log.debug(f'{res}')
             res['license_id'] = _extract_license_id(context, dataset_dict)
+            log.debug("Updated license")
+
+        if not res['mol_formula']:
+            res['mol_formula'] = dataset_dict['mol_formula']
+            log.debug(f'added Mol formula ')
 
         # log.debug(f'Result skipped: {res}')
 
