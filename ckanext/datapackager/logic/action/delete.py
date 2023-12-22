@@ -18,7 +18,7 @@ from ckan import authz
 from ckan.lib.navl.dictization_functions import validate
 from ckan.model.follower import ModelFollowingModel
 from ckanext.rdkit_visuals.models.molecule_rel import MolecularRelationData as mol_rel_data
-from ckanext.related_resources.models.related_resources import RelatedResource as related_resource_data
+from ckanext.related_resources.models.related_resources import RelatedResources as related_resource_data
 from ckan.logic import check_access
 from ckan.logic import NotFound
 
