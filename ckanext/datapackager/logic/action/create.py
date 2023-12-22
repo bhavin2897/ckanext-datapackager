@@ -101,11 +101,12 @@ def package_create_from_datapackage(context, data_dict):
         dataset_dict['state'] = 'draft'
         package_show_context = {'model': model, 'session': Session,
                                 'ignore_auth': True}
-        try:
-            res = _package_create_with_unique_name(package_show_context, dataset_dict)
-        except Exception as e:
-            log.debug(f'Package skipped {e}')
-            pass
+        res = _package_create_with_unique_name(package_show_context, dataset_dict)
+        # try:
+        #     res = _package_create_with_unique_name(package_show_context, dataset_dict)
+        # except Exception as e:
+        #     log.debug(f'Package skipped {e} at {res}')
+        #     pass
 
         dataset_id = res['id']
 
@@ -247,29 +248,39 @@ def _package_create_with_unique_name(context, dataset_dict):
 
 def _handle_existing_package(context, dataset_dict):
     log.debug(f'Handle existing package {dataset_dict}')
+    resError = None
     try:
         log.info(f'Package with GUID {dataset_dict["id"]} exists and is skipped')
         res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
+        log.debug(f'Package with GUID {res}')
 
-        if not res['license_id']:
-            log.debug(f'{res}')
+        if not res['license_title']:
+            log.debug(f'Updating license...')
             res['license_id'] = _extract_license_id(context, dataset_dict)
             log.debug("Updated license")
+        else:
+            return res
 
         if not res['mol_formula']:
+            log.debug(f'Updating mol formula...')
             res['mol_formula'] = dataset_dict['mol_formula']
-            log.debug(f'added Mol formula ')
+            log.debug(f'added Molecular formula ')
+        else:
+            return res
 
-        # log.debug(f'Result skipped: {res}')
+        if res['license_id'] and res['mol_formula']:
+            resError = res
+            log.debug(f'Nothing to update.Both Licenses and Mol_forumla exits')
 
         return remove_extras_if_duplicates_exist(res)
     except toolkit.ValidationError as e:
         log.error(f'Validation error at package Create {e}')
-        return 0  # Or a more appropriate error handling
+        return resError  # Or a more appropriate error handling
 
 
 def _create_new_package(context, dataset_dict):
     log.debug(f'Create a new package')
+    context.pop('__auth_audit', None)
     try:
         log.debug('NEW package is being created')
         res = toolkit.get_action('package_create')(context, dataset_dict)
@@ -378,6 +389,7 @@ def _create_resources(dataset_id, context, resources):
         elif resource.get('path'):
             log.debug(f'uploading Resource locally')
             _create_and_upload_local_resource(context, resource)
+
         else:
             # TODO: Investigate why in test_controller the resource['url'] is a list
             if type(resource['url']) is list:
