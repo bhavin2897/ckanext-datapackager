@@ -18,6 +18,7 @@ from ckan import authz
 from ckan.lib.navl.dictization_functions import validate
 from ckan.model.follower import ModelFollowingModel
 from ckanext.rdkit_visuals.models.molecule_rel import MolecularRelationData as mol_rel_data
+from ckanext.related_resources.models.related_resources import RelatedResource as related_resource_data
 from ckan.logic import check_access
 from ckan.logic import NotFound
 
@@ -63,10 +64,16 @@ def purge_dataset_foreignkeys(context, data_dict):
     context['package'] = pkg
 
     molecule_id_members = model.Session.query(mol_rel_data).filter(mol_rel_data.package_id == pkg.id)
+    related_resources_members = model.Session.query(related_resource_data).filter(related_resource_data.package_id == pkg.id)
 
     if molecule_id_members.count() > 0:
         for row in molecule_id_members.all():
             log.debug(f'Purging dataset id: {row.package_id}')
+            model.Session.delete(row)
+
+    if related_resources_members.count() > 0:
+        for row in related_resources_members.all():
+            log.debug(f'Purging related resource... ')
             model.Session.delete(row)
 
     pkg = model.Package.get(id)
