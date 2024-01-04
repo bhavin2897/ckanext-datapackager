@@ -4,11 +4,13 @@ import ckan.model as model
 import ckan.plugins.toolkit as toolkit
 from flask import make_response
 
+
 def _authorize_or_abort(context):
     try:
         toolkit.check_access('package_create', context)
     except toolkit.NotAuthorized:
         toolkit.abort(401, toolkit._('Unauthorized to create a dataset'))
+
 
 def new(data=None, errors=None, error_summary=None):
     context = {
@@ -35,6 +37,7 @@ def new(data=None, errors=None, error_summary=None):
             'error_summary': error_summary,
         }
     )
+
 
 def import_datapackage():
     context = {
@@ -68,8 +71,9 @@ def import_datapackage():
         errors = e.error_dict
         error_summary = e.error_summary
         return new(data=params,
-                        errors=errors,
-                        error_summary=error_summary)
+                   errors=errors,
+                   error_summary=error_summary)
+
 
 def export_datapackage(package_id):
     '''Return the given dataset as a Data Package JSON file.
@@ -105,9 +109,9 @@ if not toolkit.check_ckan_version(u'2.9'):
     class DataPackageController(toolkit.BaseController):
         def new(self, data=None, errors=None, error_summary=None):
             return new(data, errors, error_summary)
+
         def import_datapackage(self):
             return import_datapackage()
+
         def export_datapackage(self, package_id):
             return export_datapackage(package_id)
-
-

@@ -50,6 +50,7 @@ def purge_dataset_foreignkeys(context, data_dict):
 
     model = context['model']
     id = _get_or_bust(data_dict, 'id')
+    type = _get_or_bust(data_dict, 'type')
 
     pkg = model.Package.get(id)
 
