@@ -260,17 +260,22 @@ def _handle_existing_package(context, dataset_dict):
             log.debug("Updated license")
         else:
             return res
+        try:
+            if not res['mol_formula']:
+                log.debug(f'Updating mol formula...')
+                res['mol_formula'] = dataset_dict['mol_formula']
+                log.debug(f'added Molecular formula ')
 
-        if not res['mol_formula']:
-            log.debug(f'Updating mol formula...')
-            res['mol_formula'] = dataset_dict['mol_formula']
-            log.debug(f'added Molecular formula ')
-        else:
-            return res
+            elif res['license_id'] and res['mol_formula']:
+                resError = res
+                log.debug(f'Nothing to update.Both Licenses and Mol_forumla exits')
+            else:
+                return res
 
-        if res['license_id'] and res['mol_formula']:
-            resError = res
-            log.debug(f'Nothing to update.Both Licenses and Mol_forumla exits')
+        except Exception as e:
+            log.error(e)
+            pass
+
 
         return remove_extras_if_duplicates_exist(res)
     except toolkit.ValidationError as e:
@@ -495,23 +500,13 @@ def _send_to_db(package):
     name_list = []
     package_id = package['id']
     log.debug(package)
+
     try:
         standard_inchi = package['inchi']
         inchi_key = package['inchi_key']
         smiles = package['smiles']
         exact_mass = package['exactmass']
         mol_formula = package['mol_formula']
-
-        ## Cursor and conect to DB
-        ## connect to db
-        # con = psycopg2.connect(user=DB_USER,
-        #                       host=DB_HOST,
-        #                       password=DB_pwd,
-        #                       dbname=DB_NAME)
-        #
-        # con.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-        ## cur = con.cursor()
-        # cur2 = con.cursor()
 
         # Check if the row already exists, if not then INSERT
         molecule_id = molecules._get_inchi_from_db(inchi_key)
@@ -549,24 +544,49 @@ def _send_to_db(package):
 
 def _import_molecule_images(package):
     package_id = package['id']
-    standard_inchi = package['inchi']
-    inchi_key = package['inchi_key']
+    try:
+        if package['inchi'] and package['inchi_key']:
+            standard_inchi = package['inchi']
+            inchi_key = package['inchi_key']
 
-    if standard_inchi.startswith('InChI'):
-        molecu = inchi.MolFromInchi(standard_inchi)
-        log.debug("Molecule generated")
-        try:
-            filepath = '/var/lib/ckan/default/storage/images/' + str(inchi_key) + '.png'
-            if os.path.isfile(filepath):
-                log.debug("Image Already exists")
-            else:
-                Draw.MolToFile(molecu, filepath)
-                log.debug("Molecule Image generated for %s", package_id)
+            if standard_inchi.startswith('InChI'):
+                molecule = inchi.MolFromInchi(standard_inchi)
+                log.debug("Molecule generated")
+                try:
+                    filepath = '/var/lib/ckan/default/storage/images/' + str(inchi_key) + '.png'
+                    if os.path.isfile(filepath):
+                        log.debug("Image Already exists")
+                    else:
+                        Draw.MolToFile(molecule, filepath)
+                        log.debug("Molecule Image generated for %s", package_id)
 
-        except Exception as e:
-            log.error(f"_import_molecule_images not possible: {e}")
+                except Exception as e:
+                    log.error(f"_import_molecule_images not possible: {e}")
+            return 0
 
-    return 0
+        elif package['inchi']:
+            standard_inchi = package['inchi']
+            if standard_inchi.startswith('InChI'):
+                molecule = inchi.MolFromInchi(standard_inchi)
+                inchi_key = inchi.InchiToInchiKey(standard_inchi)
+                try:
+                    filepath = '/var/lib/ckan/default/storage/images/' + str(inchi_key) + '.png'
+                    if os.path.isfile(filepath):
+                        log.debug("Image Already exists")
+                    else:
+                        Draw.MolToFile(molecule, filepath)
+                        log.debug("Molecule Image generated for %s", package_id)
+                except Exception as e:
+                    log.error(f"_import_molecule_images not possible: {e}")
+
+            return 0
+
+        else:
+            return 0
+
+    except Exception as e:
+        log.error(f"Exception occured{e}")
+        return 0
 
 
 # Used only in CKAN < 2.9

@@ -101,18 +101,37 @@ def package(fddict):
 
     outdict = dict(fddict)
 
-    outdict['inchi'] = fddict['inChI']
-    outdict['inchi_key'] = fddict['inChIKey']
-    outdict['smiles'] = fddict['smiles']
+    log.debug(f"{fddict}")
+    try:
+        if fddict['inChI']:
+            outdict['inchi'] = fddict['inChI']
+        else:
+            outdict['inchi'] = ''
 
-    if fddict['molecularFormula']:
-        outdict['mol_formula'] = fddict['molecularFormula']
-    elif fddict['chemicalComposition']:
-        outdict['mol_formula'] = fddict['chemicalComposition']
-    else:
-        outdict['mol_formula'] = '-'
+        if fddict['inChIKey']:
+            outdict['inchi_key'] = fddict['inChIKey']
+        else:
+            outdict['inchi_key'] = ''
 
-    outdict['exactmass'] = fddict['monoisotopicMolecularWeight']
+        if fddict['smiles']:
+            outdict['smiles'] = fddict['smiles']
+        else:
+            outdict['smiles'] = ''
+
+        if fddict['molecularFormula']:
+            outdict['mol_formula'] = fddict['molecularFormula']
+
+        elif fddict['chemicalComposition']:
+            outdict['mol_formula'] = fddict['chemicalComposition']
+        else:
+            outdict['mol_formula'] = '-'
+
+        outdict['exactmass'] = fddict['monoisotopicMolecularWeight']
+
+    except Exception as e:
+        log.error(f'Missing Chemical Information and {e}')
+        pass
+
     outdict['metadata_published'] = fddict['datePublished']
     # map resources inside dataset
 
