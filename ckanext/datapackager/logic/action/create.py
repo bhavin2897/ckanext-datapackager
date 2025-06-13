@@ -32,6 +32,12 @@ import logging
 
 import datapackage
 
+# Adding for CIF File integration
+import uuid
+from ase.io import read as ase_read
+from ase.visualize.plot import plot_atoms
+import matplotlib.pyplot as plt
+
 log = logging.getLogger(__name__)
 
 
@@ -39,6 +45,20 @@ log = logging.getLogger(__name__)
 # DB_USER = "ckan_default"
 # DB_NAME = "ckan_default"
 # DB_pwd = "123456789"
+
+
+def package_create_from_datapackage_or_cif(context, data_dict):
+    upload = data_dict.get('upload')
+
+    if upload and _is_cif_file(upload.filename):
+        log.debug("Processing CIF file upload...")
+        return _process_cif_and_create_package(context, data_dict)
+    else:
+        return package_create_from_datapackage(context, data_dict)
+
+
+def _is_cif_file(filename):
+    return filename.lower().endswith('.cif')
 
 
 def package_create_from_datapackage(context, data_dict):
@@ -74,7 +94,7 @@ def package_create_from_datapackage(context, data_dict):
 
     dp = _load_and_validate_datapackage(url=url, upload=upload)
 
-    # considering each JSON file has one dataset and ChemcialSubstance
+    # considering each JSON file has one dataset and Chemcial Substance
 
     for each_dp in dp:
         send_dp_to_convert = each_dp.to_dict()
@@ -102,11 +122,6 @@ def package_create_from_datapackage(context, data_dict):
         package_show_context = {'model': model, 'session': Session,
                                 'ignore_auth': True}
         res = _package_create_with_unique_name(package_show_context, dataset_dict)
-        # try:
-        #     res = _package_create_with_unique_name(package_show_context, dataset_dict)
-        # except Exception as e:
-        #     log.debug(f'Package skipped {e} at {res}')
-        #     pass
 
         dataset_id = res['id']
 
@@ -154,82 +169,151 @@ def package_create_from_datapackage(context, data_dict):
     return updated_datasets
 
 
-# def _package_create_with_unique_name(context, dataset_dict):
-#     res = None
-#
-#     package_show_context = {'model': model, 'session': Session,
-#                             'ignore_auth': True}
-#
-#     dataset_dict['name'] = dataset_dict['identifier'].lower()
-#     dataset_dict['id'] = munge_title_to_name(dataset_dict['name'])
-#     # log.debug(f'dataset_dict: {dataset_dict}')
-#     existing_package_dict = _find_existing_package(dataset_dict, context)
-#
-#     if existing_package_dict:
-#         try:
-#             log.info('Package with GUID %s exists and is skipped' % dataset_dict['id'])
-#             res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
-#             log.debug(f' res skipped: {res}')
-#
-#         except toolkit.ValidationError as e:
-#             log.error(f'Validation error at package Create {e}')
-#             if 'There is a schema field with the same name' in e.error_dict.get('extras', []):
-#                 res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
-#             else:
-#                 res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
-#             log.error(f' res show with error {res}')
-#             pass
-#     else:
-#         try:
-#             log.debug(f'NEW package is being created')
-#
-#             res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
-#
-#             if dataset_dict['license']:
-#                 res['license_id'] = _extract_license_id(context, dataset_dict)
-#             log.debug(f"res created {res}")
-#
-#         except toolkit.ValidationError as e:
-#             log.error(f'NEW package is not being created because of an exception: {e}')
-#
-#             if 'That URL is already in use.' in e.error_dict.get('name', []):
-#                 random_num = random.randint(0, 9999999999)
-#                 name = '{name}-{rand}'.format(name=dataset_dict.get('name', 'dp'),
-#                                               rand=random_num)
-#                 dataset_dict['name'] = name
-#                 try:
-#                     res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
-#                     if dataset_dict['license']:
-#                         res['license_id'] = _extract_license_id(package_show_context, dataset_dict)
-#                 except toolkit.ValidationError as e:
-#                     log.error(f'New Packaged with exception not created: {e}')
-#                     pass
-#
-#             elif 'Dataset id already exists' in e.error_dict.get('id', []):
-#                 random_num = random.randint(0, 9999999999)
-#                 id = '{name}-{rand}'.format(name=dataset_dict.get('name', 'dp'),
-#                                             rand=random_num)
-#
-#                 dataset_dict['id'] = id
-#
-#                 try:
-#                     res = toolkit.get_action('package_create')(package_show_context, dataset_dict)
-#                     if dataset_dict['license']:
-#                         res['license_id'] = _extract_license_id(package_show_context, dataset_dict)
-#                 except toolkit.ValidationError as e:
-#                     log.error(f'New Packaged with exception not created: {e}')
-#                     pass
-#                     return toolkit.get_action('package_create')(package_show_context, dataset_dict)
-#             else:
-#                 return 0
-#
-#
-#             #log.debug(f'res created with error {res}')
-#
-#     # log.debug(f'res_final from package_create {res}')
-#     res_final = remove_extras_if_duplicates_exist(res)
-#     # log.debug(f'{res}')
-#     return res_final
+def _process_cif_and_create_package(context, data_dict):
+    updated_datasets = []
+    upload = data_dict.get('upload')
+    if not upload:
+        raise toolkit.ValidationError({'upload': ['No CIF file provided']})
+
+    try:
+        byte_data = upload.read()
+        cif_str = byte_data.decode('utf-8')
+        with tempfile.NamedTemporaryFile(mode='w+', suffix='.cif', delete=False) as tmp_cif:
+            tmp_cif.write(cif_str)
+            tmp_cif_path = tmp_cif.name
+
+        # Initialize metadata
+        identifier = "N/A"
+        citation_title = "N/A"
+        mol_formula = "N/A"
+        molecule_name = "N/A"
+        authors = []
+        extras = {}
+
+        is_author_section = False
+
+        with open(tmp_cif_path, 'r') as f:
+            lines = f.readlines()
+            i = 0
+            while i < len(lines):
+                line = lines[i].strip()
+
+                # Identifier
+                if line.startswith("data_"):
+                    identifier = line
+
+                # Citation title - multi-line block
+                elif "_citation_title" in line:
+                    i += 1
+                    citation_title_lines = []
+                    while i < len(lines) and not lines[i].strip().startswith(";"):
+                        i += 1  # skip until start of block
+                    i += 1  # skip the first ;
+                    while i < len(lines) and not lines[i].strip().startswith(";"):
+                        citation_title_lines.append(lines[i].strip())
+                        i += 1
+                    citation_title = " ".join(citation_title_lines).strip()
+
+                # Formula structural
+                elif "_chemical_formula_structural" in line:
+                    parts = line.split("'")
+                    if len(parts) > 1:
+                        mol_formula = parts[1].strip()
+                    else:
+                        mol_formula = line.split()[-1]
+
+                # Chemical name common
+                elif "_chemical_name_common" in line:
+                    parts = line.split("'")
+                    if len(parts) > 1:
+                        molecule_name = parts[1].strip()
+                    else:
+                        molecule_name = line.split()[-1]
+
+                # Authors
+                elif "_citation_author_name" in line:
+                    is_author_section = True
+                elif is_author_section and line.startswith("primary"):
+                    parts = line.split("'")
+                    if len(parts) > 1:
+                        authors.append(parts[1].strip())
+                elif is_author_section and not line.startswith("primary"):
+                    is_author_section = False
+
+                # Space group extras
+                elif "_space_group_name_H-M_alt" in line:
+                    parts = line.split("'")
+                    if len(parts) > 1:
+                        extras["space_group_name_H-M"] = parts[1].strip()
+                    else:
+                        extras["space_group_name_H-M"] = line.split()[-1]
+                elif "_space_group_IT_number" in line:
+                    extras["space_group_IT_number"] = line.split()[-1]
+
+                i += 1
+
+        # Format authors for CKAN field
+        author_str = '; '.join(authors) if authors else 'N/A'
+
+        # Build dataset_dict
+        dataset_dict = {
+            'identifier': identifier,
+            'name': identifier.lower().replace(' ', '_'),
+            'title': citation_title or 'N/A',
+            'notes': f'Molecule name: {molecule_name}',
+            'mol_formula': mol_formula or 'N/A',
+            'smiles': 'N/A',
+            'inchi': 'N/A',
+            'inchi_key': '',
+            'exactmass': 'N/A',  # Will compute below
+            'author': author_str,
+            'license_id': data_dict.get('license_id', 'N/A'),
+            'owner_org': data_dict.get('owner_org', 'N/A'),
+            'language': 'english',
+            'state': 'draft',
+            'extras': [{'key': k, 'value': v} for k, v in extras.items()]
+        }
+
+        # Compute exactmass
+        from ase.io import read as ase_read
+        from ase.visualize.plot import plot_atoms
+        import matplotlib.pyplot as plt
+
+        atoms = ase_read(tmp_cif_path)
+        exact_mass = atoms.get_masses().sum() if atoms else 'N/A'
+        dataset_dict['exactmass'] = str(exact_mass) if exact_mass else 'N/A'
+
+        # Save 3D PNG image (300x300 px, 300 DPI)
+        img_filename = f'/var/lib/ckan/default/storage/images/{identifier}.png'
+        fig, ax = plt.subplots(figsize=(1, 1), dpi=100)
+        plot_atoms(atoms, ax, rotation=('45x,45y,0z'), radii=0.4, scale=0.8, show_unit_cell=0)
+        plt.axis('off')
+        plt.savefig(img_filename, dpi=300, transparent=True)
+        plt.close()
+        log.debug(f"3D CIF image saved: {img_filename}")
+
+        # Create dataset in CKAN
+        package_show_context = {'model': model, 'session': Session, 'ignore_auth': True}
+        res = _package_create_with_unique_name(package_show_context, dataset_dict)
+
+        _create_resources(dataset_id=dataset_dict['identifier'],context=context, resources=upload)
+        # Remove extras duplicates
+        res = remove_extras_if_duplicates_exist(res)
+
+        res['state'] = 'active'
+        _send_to_db(package=res)
+        updated_dataset = toolkit.get_action('package_update')(package_show_context, res)
+        updated_datasets.append(updated_dataset)
+
+    except Exception as e:
+        log.error(f'Error processing CIF file: {e}')
+        raise toolkit.ValidationError({'upload': ['Failed to process CIF file']})
+
+    finally:
+        if tmp_cif_path and os.path.exists(tmp_cif_path):
+            os.remove(tmp_cif_path)
+
+    return updated_datasets
 
 def _package_create_with_unique_name(context, dataset_dict):
     dataset_dict['name'] = dataset_dict['identifier'].lower()
@@ -268,18 +352,17 @@ def _handle_existing_package(context, dataset_dict):
 
             elif res['license_id'] and res['mol_formula']:
                 resError = res
-                log.debug(f'Nothing to update.Both Licenses and Mol_forumla exits')
+                log.debug(f'Nothing to update.Both Licenses and Molecular formula exits')
             else:
                 return res
 
         except Exception as e:
-            log.error(e)
+            log.error(f"line 172 {e}")
             pass
-
 
         return remove_extras_if_duplicates_exist(res)
     except toolkit.ValidationError as e:
-        log.error(f'Validation error at package Create {e}')
+        log.error(f'Validation error at package Create #line177 {e}')
         return resError  # Or a more appropriate error handling
 
 
@@ -296,7 +379,7 @@ def _create_new_package(context, dataset_dict):
         return remove_extras_if_duplicates_exist(res)
 
     except toolkit.ValidationError as e:
-        log.error(f'Exception during package creation: {e}')
+        log.error(f'Exception during package creation #line 194: {e}')
         return _handle_package_creation_exception(context, dataset_dict, e)
 
 
@@ -314,7 +397,7 @@ def _handle_package_creation_exception(context, dataset_dict, e):
             res['license_id'] = _extract_license_id(context, dataset_dict)
         return remove_extras_if_duplicates_exist(res)
     except toolkit.ValidationError as e:
-        log.error(f'Failed to create package with exception: {e}')
+        log.error(f'Failed to create package with exception #line 212: {e}')
         return 0  # Or a more appropriate error handling
 
 
@@ -347,7 +430,7 @@ def _load_and_validate_datapackage(url=None, upload=None):
                     dp = datapackage.DataPackage(upload.file)
 
             except json.JSONDecodeError:
-                log.error(f'Invalid JSON file')
+                log.error(f'Invalid JSON file # line 245')
 
         else:
             dp = datapackage.DataPackage(url)
@@ -378,7 +461,7 @@ def remove_extras_if_duplicates_exist(dataset_dict):
                 # If duplicates found, empty 'extras'
                 dataset_dict['extras'] = []
         else:
-            log.debug('Nothing')
+            log.debug('Nothing exists as duplicate')
     except Exception as e:
         log.error(f'remove_extras_if_duplicates_exist: {e}')
         pass
@@ -489,7 +572,7 @@ def _find_existing_package(package_dict, context):
 
         return toolkit.get_action('package_show')(context, data_dict)
     except Exception as e:
-        if e:
+            log.error(f' find existing package error {e}')
             return 0
 
 
@@ -585,7 +668,7 @@ def _import_molecule_images(package):
             return 0
 
     except Exception as e:
-        log.error(f"Exception occured{e}")
+        log.error(f"Exception occured # line 483{e}")
         return 0
 
 

@@ -1,6 +1,6 @@
 import ckan.plugins as plugins
 import ckan.plugins.toolkit as toolkit
-from ckanext.datapackager.logic.action.create import package_create_from_datapackage
+from ckanext.datapackager.logic.action.create import package_create_from_datapackage_or_cif
 from ckanext.datapackager.logic.action.get import package_show_as_datapackage
 from ckanext.datapackager.logic.action.delete import purge_dataset_foreignkeys
 
@@ -23,7 +23,7 @@ class DataPackagerPlugin(MixinPlugin, plugins.SingletonPlugin):
 
     def get_actions(self):
         return {
-            'package_create_from_datapackage': package_create_from_datapackage,
+            'package_create_from_datapackage': package_create_from_datapackage_or_cif,
             'package_show_as_datapackage': package_show_as_datapackage,
             'purge_dataset_foreignkeys' : purge_dataset_foreignkeys,
         }
