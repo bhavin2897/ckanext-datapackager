@@ -51,14 +51,14 @@ def package_create_from_datapackage_or_cif(context, data_dict):
     upload = data_dict.get('upload')
 
     if upload and _is_cif_file(upload.filename):
-        log.debug("Processing CIF file upload...")
-        return _process_cif_and_create_package(context, data_dict)
+        log.debug("Processing txt file upload...")
+        return _process_txt_and_create_package(context, data_dict)
     else:
         return package_create_from_datapackage(context, data_dict)
 
 
 def _is_cif_file(filename):
-    return filename.lower().endswith('.cif')
+    return filename.lower().endswith('.txt')
 
 
 def package_create_from_datapackage(context, data_dict):
@@ -169,18 +169,166 @@ def package_create_from_datapackage(context, data_dict):
     return updated_datasets
 
 
-def _process_cif_and_create_package(context, data_dict):
+# def _process_cif_and_create_package(context, data_dict):
+#     updated_datasets = []
+#     upload = data_dict.get('upload')
+#     if not upload:
+#         raise toolkit.ValidationError({'upload': ['No CIF file provided']})
+#
+#     try:
+#         byte_data = upload.read()
+#         cif_str = byte_data.decode('utf-8')
+#         with tempfile.NamedTemporaryFile(mode='w+', suffix='.cif', delete=False) as tmp_cif:
+#             tmp_cif.write(cif_str)
+#             tmp_cif_path = tmp_cif.name
+#
+#         # Initialize metadata
+#         identifier = "N/A"
+#         citation_title = "N/A"
+#         mol_formula = "N/A"
+#         molecule_name = "N/A"
+#         authors = []
+#         extras = {}
+#
+#         is_author_section = False
+#
+#         with open(tmp_cif_path, 'r') as f:
+#             lines = f.readlines()
+#             i = 0
+#             while i < len(lines):
+#                 line = lines[i].strip()
+#
+#                 # Identifier
+#                 if line.startswith("data_"):
+#                     identifier = line
+#
+#                 # Citation title - multi-line block
+#                 elif "_citation_title" in line:
+#                     i += 1
+#                     citation_title_lines = []
+#                     while i < len(lines) and not lines[i].strip().startswith(";"):
+#                         i += 1  # skip until start of block
+#                     i += 1  # skip the first ;
+#                     while i < len(lines) and not lines[i].strip().startswith(";"):
+#                         citation_title_lines.append(lines[i].strip())
+#                         i += 1
+#                     citation_title = " ".join(citation_title_lines).strip()
+#
+#                 # Formula structural
+#                 elif "_chemical_formula_structural" in line:
+#                     parts = line.split("'")
+#                     if len(parts) > 1:
+#                         mol_formula = parts[1].strip()
+#                     else:
+#                         mol_formula = line.split()[-1]
+#
+#                 # Chemical name common
+#                 elif "_chemical_name_common" in line:
+#                     parts = line.split("'")
+#                     if len(parts) > 1:
+#                         molecule_name = parts[1].strip()
+#                     else:
+#                         molecule_name = line.split()[-1]
+#
+#                 # Authors
+#                 elif "_citation_author_name" in line:
+#                     is_author_section = True
+#                 elif is_author_section and line.startswith("primary"):
+#                     parts = line.split("'")
+#                     if len(parts) > 1:
+#                         authors.append(parts[1].strip())
+#                 elif is_author_section and not line.startswith("primary"):
+#                     is_author_section = False
+#
+#                 # Space group extras
+#                 elif "_space_group_name_H-M_alt" in line:
+#                     parts = line.split("'")
+#                     if len(parts) > 1:
+#                         extras["space_group_name_H-M"] = parts[1].strip()
+#                     else:
+#                         extras["space_group_name_H-M"] = line.split()[-1]
+#                 elif "_space_group_IT_number" in line:
+#                     extras["space_group_IT_number"] = line.split()[-1]
+#
+#                 i += 1
+#
+#         # Format authors for CKAN field
+#         author_str = '; '.join(authors) if authors else 'N/A'
+#
+#         # Build dataset_dict
+#         dataset_dict = {
+#             'identifier': identifier,
+#             'name': identifier.lower().replace(' ', '_'),
+#             'title': molecule_name or 'N/A',
+#             'notes': f'Crystallographic dataset of {molecule_name} which is {citation_title}',
+#             'mol_formula': mol_formula or 'N/A',
+#             'smiles': 'N/A',
+#             'inchi': 'N/A',
+#             'inchi_key': '',
+#             'exactmass': 'N/A',  # Will compute below
+#             'author': author_str,
+#             'license_id': data_dict.get('license_id', 'N/A'),
+#             'license_url': data_dict.get('license_url', 'N/A'),
+#             'owner_org': data_dict.get('owner_org', 'N/A'),
+#             'language': 'english',
+#             'state': 'draft',
+#             'extras': [{'key': k, 'value': v} for k, v in extras.items()]
+#             #'extras' : []
+#         }
+#
+#         # Compute exactmass
+#         from ase.io import read as ase_read
+#         from ase.visualize.plot import plot_atoms
+#         import matplotlib.pyplot as plt
+#
+#         atoms = ase_read(tmp_cif_path)
+#         exact_mass = atoms.get_masses().sum() if atoms else 'N/A'
+#         dataset_dict['exactmass'] = str(exact_mass) if exact_mass else 'N/A'
+#
+#         # Save 3D PNG image (300x300 px, 300 DPI)
+#         img_filename = f'/var/lib/ckan/default/storage/images/{identifier}.png'
+#         fig, ax = plt.subplots(figsize=(1, 1), dpi=100)
+#         plot_atoms(atoms, ax, rotation=('45x,45y,0z'), radii=0.4, scale=0.8, show_unit_cell=0)
+#         plt.axis('off')
+#         plt.savefig(img_filename, dpi=300, transparent=True)
+#         plt.close()
+#         log.debug(f"3D CIF image saved: {img_filename}")
+#
+#         # Create dataset in CKAN
+#         package_show_context = {'model': model, 'session': Session, 'ignore_auth': True}
+#         res = _package_create_with_unique_name(package_show_context, dataset_dict)
+#
+#         _create_resources(dataset_id=dataset_dict['identifier'],context=context, resources=upload)
+#         # Remove extras duplicates
+#         res = remove_extras_if_duplicates_exist(res)
+#         log.debug('remove extras success')
+#
+#         res['state'] = 'active'
+#         _send_to_db(package=res)
+#         updated_dataset = toolkit.get_action('package_update')(package_show_context, res)
+#         updated_datasets.append(updated_dataset)
+#
+#     except Exception as e:
+#         log.error(f'Error processing CIF file why: {e}')
+#         raise toolkit.ValidationError({'upload': ['Failed to process CIF file']})
+#
+#     finally:
+#         if tmp_cif_path and os.path.exists(tmp_cif_path):
+#             os.remove(tmp_cif_path)
+#
+#     return updated_datasets
+
+
+def _process_txt_and_create_package(context, data_dict):
     updated_datasets = []
     upload = data_dict.get('upload')
     if not upload:
-        raise toolkit.ValidationError({'upload': ['No CIF file provided']})
+        raise toolkit.ValidationError({'upload': ['No TXT file provided']})
 
     try:
         byte_data = upload.read()
-        cif_str = byte_data.decode('utf-8')
-        with tempfile.NamedTemporaryFile(mode='w+', suffix='.cif', delete=False) as tmp_cif:
-            tmp_cif.write(cif_str)
-            tmp_cif_path = tmp_cif.name
+        txt_str = byte_data.decode('utf-8')
+        lines = txt_str.splitlines()
 
         # Initialize metadata
         identifier = "N/A"
@@ -188,132 +336,113 @@ def _process_cif_and_create_package(context, data_dict):
         mol_formula = "N/A"
         molecule_name = "N/A"
         authors = []
+        doi = ''
         extras = {}
+        reference_info = ''
 
-        is_author_section = False
+        # New extras extracted from .txt file
+        for line in lines:
+            line = line.strip()
 
-        with open(tmp_cif_path, 'r') as f:
-            lines = f.readlines()
-            i = 0
-            while i < len(lines):
-                line = lines[i].strip()
+            if line.startswith("Coll Code"):
+                identifier = f"data_{line.split()[-1]}"
+            elif line.startswith("Chem Name"):
+                molecule_name = line.split("Chem Name")[1].strip()
+            elif line.startswith("Rec  Date "):
+                metadata_published=line.split("Rec  Date ")[1].strip()
+            elif line.startswith("Structured"):
+                mol_formula = line.split("Structured")[1].strip()
+            elif line.startswith("Title"):
+                citation_title = line.split("Title")[1].strip()
+            elif line.startswith("Author(s)"):
+                authors_line = line.split("Author(s)")[1].strip()
+                authors = [a.strip() for a in authors_line.split(";")]
+            elif line.startswith("DOI"):
+                doi = line.split("DOI")[1].strip()
+            elif line.startswith("Space Group"):
+                extras["Hermann-Mauguin space group symbol"] = line.split("Space Group")[1].strip()
+            elif line.startswith("SG Number"):
+                extras["Space group number"] = line.split("SG Number")[1].strip()
+            elif line.startswith("Vol"):
+                extras["Cell volume"] = line.split("Vol")[1].strip() + " Å³"
+            elif line.startswith("Unit Cell"):
+                unit_cell = line.split("Unit Cell")[1].strip().split()
+                if len(unit_cell) >= 6:
+                    extras["a"] = unit_cell[0] + " Å"
+                    extras["b"] = unit_cell[1] + " Å"
+                    extras["c"] = unit_cell[2] + " Å"
+                    extras["α"] = unit_cell[3] + "°"
+                    extras["β"] = unit_cell[4] + "°"
+                    extras["γ"] = unit_cell[5] + "°"
+            elif line.startswith("Cryst Sys"):
+                extras["Crystal system"] = line.split("Cryst Sys")[1].strip()
+            elif line.startswith("Pearson"):
+                extras["Pearson symbol"] = line.split("Pearson")[1].strip()
+            elif line.startswith("Z"):
+                extras["Z"] = line.split("Z")[1].strip()
+            elif line.startswith("Formula Wt"): # difference between exact mass and formula weight
+                extras["Formula weight"] = line.split("Formula Wt")[1].strip()
+            elif line.startswith("Sum"):
+                extras["Calculated formula"] = line.split("Sum")[1].strip()
 
-                # Identifier
-                if line.startswith("data_"):
-                    identifier = line
+            lines = iter(lines)  # Ensure lines is an iterator before using next()
+            for line in lines:
+                if line.startswith("Reference"):
+                    journal_lines = [line.split("Reference")[1].strip()]
+                    try:
+                        next_line = next(lines).strip()
+                        if next_line.startswith("("):  # year, volume, pages likely here
+                            journal_lines.append(next_line)
+                    except StopIteration:
+                        pass  # End of file reached; nothing more to append
+                    reference_info = " ".join(journal_lines)
 
-                # Citation title - multi-line block
-                elif "_citation_title" in line:
-                    i += 1
-                    citation_title_lines = []
-                    while i < len(lines) and not lines[i].strip().startswith(";"):
-                        i += 1  # skip until start of block
-                    i += 1  # skip the first ;
-                    while i < len(lines) and not lines[i].strip().startswith(";"):
-                        citation_title_lines.append(lines[i].strip())
-                        i += 1
-                    citation_title = " ".join(citation_title_lines).strip()
-
-                # Formula structural
-                elif "_chemical_formula_structural" in line:
-                    parts = line.split("'")
-                    if len(parts) > 1:
-                        mol_formula = parts[1].strip()
-                    else:
-                        mol_formula = line.split()[-1]
-
-                # Chemical name common
-                elif "_chemical_name_common" in line:
-                    parts = line.split("'")
-                    if len(parts) > 1:
-                        molecule_name = parts[1].strip()
-                    else:
-                        molecule_name = line.split()[-1]
-
-                # Authors
-                elif "_citation_author_name" in line:
-                    is_author_section = True
-                elif is_author_section and line.startswith("primary"):
-                    parts = line.split("'")
-                    if len(parts) > 1:
-                        authors.append(parts[1].strip())
-                elif is_author_section and not line.startswith("primary"):
-                    is_author_section = False
-
-                # Space group extras
-                elif "_space_group_name_H-M_alt" in line:
-                    parts = line.split("'")
-                    if len(parts) > 1:
-                        extras["space_group_name_H-M"] = parts[1].strip()
-                    else:
-                        extras["space_group_name_H-M"] = line.split()[-1]
-                elif "_space_group_IT_number" in line:
-                    extras["space_group_IT_number"] = line.split()[-1]
-
-                i += 1
-
-        # Format authors for CKAN field
         author_str = '; '.join(authors) if authors else 'N/A'
+        excluded_extras = {'license_url', 'license_id', 'author', 'identifier', 'owner_org'}
 
-        # Build dataset_dict
+        citation = f'{author_str}, “{citation_title},” {reference_info}.'
+
+        extras["Citation"] = citation
+
         dataset_dict = {
             'identifier': identifier,
             'name': identifier.lower().replace(' ', '_'),
-            'title': citation_title or 'N/A',
-            'notes': f'Molecule name: {molecule_name}',
+            'doi' : doi,
+            'title': molecule_name or 'N/A',
+            'notes': f'Crystallographic dataset of {molecule_name} which is {citation_title}',
             'mol_formula': mol_formula or 'N/A',
-            'smiles': 'N/A',
-            'inchi': 'N/A',
-            'inchi_key': '',
-            'exactmass': 'N/A',  # Will compute below
+            'smiles': '',
+            'inchi': '',
+            'inchi_key': identifier.lower().replace(' ', '_'),
+            'exactmass': '',
             'author': author_str,
-            'license_id': data_dict.get('license_id', 'N/A'),
+            'license_url':  'N/A',
             'owner_org': data_dict.get('owner_org', 'N/A'),
             'language': 'english',
+            'metadata_published': metadata_published,
             'state': 'draft',
-            'extras': [{'key': k, 'value': v} for k, v in extras.items()]
+            'extras': [{'key': k, 'value': v} for k, v in extras.items() if k not in excluded_extras]
+
         }
-
-        # Compute exactmass
-        from ase.io import read as ase_read
-        from ase.visualize.plot import plot_atoms
-        import matplotlib.pyplot as plt
-
-        atoms = ase_read(tmp_cif_path)
-        exact_mass = atoms.get_masses().sum() if atoms else 'N/A'
-        dataset_dict['exactmass'] = str(exact_mass) if exact_mass else 'N/A'
-
-        # Save 3D PNG image (300x300 px, 300 DPI)
-        img_filename = f'/var/lib/ckan/default/storage/images/{identifier}.png'
-        fig, ax = plt.subplots(figsize=(1, 1), dpi=100)
-        plot_atoms(atoms, ax, rotation=('45x,45y,0z'), radii=0.4, scale=0.8, show_unit_cell=0)
-        plt.axis('off')
-        plt.savefig(img_filename, dpi=300, transparent=True)
-        plt.close()
-        log.debug(f"3D CIF image saved: {img_filename}")
 
         # Create dataset in CKAN
         package_show_context = {'model': model, 'session': Session, 'ignore_auth': True}
         res = _package_create_with_unique_name(package_show_context, dataset_dict)
 
-        _create_resources(dataset_id=dataset_dict['identifier'],context=context, resources=upload)
-        # Remove extras duplicates
+        _create_resources(dataset_id=dataset_dict['identifier'], context=context, resources=upload)
         res = remove_extras_if_duplicates_exist(res)
 
         res['state'] = 'active'
-        _send_to_db(package=res)
+        # _send_to_db(package=res)
         updated_dataset = toolkit.get_action('package_update')(package_show_context, res)
         updated_datasets.append(updated_dataset)
 
     except Exception as e:
-        log.error(f'Error processing CIF file: {e}')
-        raise toolkit.ValidationError({'upload': ['Failed to process CIF file']})
-
-    finally:
-        if tmp_cif_path and os.path.exists(tmp_cif_path):
-            os.remove(tmp_cif_path)
+        log.error(f'Error processing TXT file: {e}')
+        raise toolkit.ValidationError({'upload': ['Failed to process TXT file']})
 
     return updated_datasets
+
 
 def _package_create_with_unique_name(context, dataset_dict):
     dataset_dict['name'] = dataset_dict['identifier'].lower()
@@ -452,20 +581,29 @@ def _load_and_validate_datapackage(url=None, upload=None):
 
 def remove_extras_if_duplicates_exist(dataset_dict):
     try:
-        if 'extras' in dataset_dict is not None:
-            extras_keys = [extra['key'] for extra in dataset_dict['extras']]
-            main_keys = set(dataset_dict.keys()) - {'extras'}
+        if 'extras' in dataset_dict and dataset_dict['extras'] is not None:
+            extras_cleaned = []
+            # CKAN schema fields to always exclude from extras
+            known_fields = {
+                'license_url', 'license_id', 'author', 'owner_org',
+                'name', 'notes', 'title', 'language', 'state',
+                'identifier', 'smiles', 'inchi', 'inchi_key',
+                'mol_formula', 'exactmass', 'doi'
+            }
+            main_keys = set(dataset_dict.keys()).union(known_fields)
 
-            # Check for any duplicates
-            if any(key in main_keys for key in extras_keys):
-                # If duplicates found, empty 'extras'
-                dataset_dict['extras'] = []
-        else:
-            log.debug('Nothing exists as duplicate')
+            for extra in dataset_dict['extras']:
+                if extra['key'] not in main_keys:
+                    extras_cleaned.append(extra)
+                else:
+                    log.warning(f"Removed duplicate or schema 'extras' key: {extra['key']}")
+
+            dataset_dict['extras'] = extras_cleaned
     except Exception as e:
         log.error(f'remove_extras_if_duplicates_exist: {e}')
-        pass
     return dataset_dict
+
+
 
 
 def _create_resources(dataset_id, context, resources):
