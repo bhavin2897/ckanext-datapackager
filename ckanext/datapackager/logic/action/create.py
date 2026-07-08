@@ -738,7 +738,7 @@ def _send_to_db(package):
         # TODO: Check if relationship exists or not.
 
         if not molecule_id:  # if there is no molecule at all, it inserts rows into molecules and molecule_rel_data dt
-            molecules.create(standard_inchi, smiles, inchi_key, exact_mass, mol_formula)
+            molecules.create(standard_inchi, smiles, inchi_key, exact_mass, mol_formula) # smiles=canonical_smiles for db table
             new_molecules_id = molecules._get_inchi_from_db(inchi_key)
             new_molecules_id = new_molecules_id[0]
             # Check if relaionship exists
