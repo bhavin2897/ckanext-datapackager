@@ -12,9 +12,6 @@ import ckan.plugins.toolkit as toolkit
 from ckanext.datapackager.logic.action import schema4chem_ckan_mapper as converter
 from werkzeug.datastructures import FileStorage
 
-from ckanext.rdkit_visuals.models.molecule_tab import Molecules as molecules
-from ckanext.rdkit_visuals.models.molecule_rel import MolecularRelationData as mol_rel_data
-
 from rdkit.Chem import inchi
 from rdkit.Chem import rdmolfiles
 from rdkit.Chem import Draw
@@ -39,7 +36,6 @@ from ase.visualize.plot import plot_atoms
 import matplotlib.pyplot as plt
 
 log = logging.getLogger(__name__)
-WRITE_LEGACY_CONFIG = "ckan.harvester4chem.write_legacy"
 
 
 # DB_HOST = "localhost"
@@ -98,9 +94,14 @@ def package_create_from_datapackage(context, data_dict):
     prepared_datasets = _prepare_schemaorg_datasets(
         [item.to_dict() for item in datapackages]
     )
-    converted_datasets = [converter.package(item) for item in prepared_datasets]
+    converted_datasets = []
+    for item in prepared_datasets:
+        dataset_dict = converter.package(item)
+        dataset_dict['_molecule_names'] = item.get('_molecule_names', [])
+        converted_datasets.append(dataset_dict)
 
     for dataset_dict in converted_datasets:
+        molecule_names = dataset_dict.pop('_molecule_names', [])
 
         owner_org = data_dict.get('owner_org')
 
@@ -146,7 +147,7 @@ def package_create_from_datapackage(context, data_dict):
 
         res['state'] = 'active'
 
-        _send_to_db(package=res)
+        _synchronize_related_molecule(res, molecule_names)
         _import_molecule_images(package=res)
 
         log.debug(f'dataset {res["id"]} will be updated')
@@ -276,6 +277,15 @@ def _prepare_schemaorg_datasets(objects):
                         dataset[target_key] = entity.get(source_key)
             if not dataset.get('molecularFormula') and substance.get('chemicalComposition'):
                 dataset['chemicalComposition'] = substance.get('chemicalComposition')
+            molecule_names = [substance.get('name')]
+            alternate_names = substance.get('alternateName') or []
+            if not isinstance(alternate_names, list):
+                alternate_names = [alternate_names]
+            molecule_names.extend(alternate_names)
+            dataset['_molecule_names'] = [
+                name for name in molecule_names
+                if isinstance(name, six.string_types) and name.strip()
+            ]
 
         prepared.append(dataset)
 
@@ -581,9 +591,15 @@ def _handle_existing_package(context, dataset_dict):
         if license_id:
             res['license_id'] = license_id
 
-    for field in ('inchi', 'inchi_key', 'smiles', 'mol_formula', 'exactmass'):
-        if not res.get(field) and dataset_dict.get(field) not in (None, ''):
-            res[field] = dataset_dict.get(field)
+    mapped_fields = (
+        'author', 'author_email', 'maintainer', 'maintainer_email',
+        'title', 'notes', 'url', 'language', 'metadata_published',
+        'measurement_technique', 'measurement_technique_iri',
+        'inchi', 'inchi_key', 'smiles', 'mol_formula', 'exactmass')
+    for field in mapped_fields:
+        incoming = dataset_dict.get(field)
+        if incoming not in (None, '', [], {}) and res.get(field) != incoming:
+            res[field] = incoming
 
     return remove_extras_if_duplicates_exist(res)
 
@@ -805,105 +821,46 @@ def _find_existing_package(package_dict, context):
         return None
 
 
-def _send_to_db(package):
-    """
-    Sends molecule information to the molecules table and creates the
-    molecule-package relation.
+def _synchronize_related_molecule(package, names=None, synchronizer=None):
+    """Use harvester4chem's canonical molecule-package relationship service."""
+    identifier = package.get('identifier') or package.get('name') or package.get('id')
+    if not package.get('inchi_key'):
+        log.info("Dataset %s has no InChIKey; molecule synchronization skipped",
+                 identifier)
+        return None
 
-    A molecule is reused when both inchi_key and canonical_smiles match.
-    This prevents duplicate rows for the same molecule representation.
-    """
-
-    if not toolkit.asbool(toolkit.config.get(WRITE_LEGACY_CONFIG, False)):
-        log.debug(
-            "Skipping legacy molecule tables for package %s because %s is disabled",
-            package.get('id'), WRITE_LEGACY_CONFIG)
-        return 0
-
-    package_id = package['id']
-    log.debug(package)
+    if synchronizer is None:
+        try:
+            from ckanext.harvester4chem.molecule_sync import (
+                MoleculeSyncError, synchronize_molecule)
+        except ImportError as error:
+            log.error("Molecule synchronization service is unavailable for Dataset %s",
+                      identifier)
+            raise toolkit.ValidationError({
+                'related_molecule': ['Molecule synchronization service is unavailable']
+            })
+        synchronizer = synchronize_molecule
+    else:
+        MoleculeSyncError = RuntimeError
 
     try:
-        standard_inchi = package.get('inchi', '')
-        inchi_key = package.get('inchi_key', '')
-        canonical_smiles = package.get('smiles', '')
-        exact_mass = package.get('exactmass')
-        mol_formula = package.get('mol_formula', '')
+        result = synchronizer(
+            package.get('id'), package.get('inchi'), package.get('inchi_key'),
+            package.get('smiles'), package.get('mol_formula'),
+            package.get('exactmass'), names=names,
+            name_source='MassBank datapackage')
+    except MoleculeSyncError as error:
+        log.error("Molecule synchronization failed for Dataset %s: %s",
+                  identifier, error)
+        raise toolkit.ValidationError({
+            'related_molecule': [str(error)]
+        })
 
-        existing_molecule = (
-            Session.query(molecules.id)
-            .filter(molecules.inchi_key == inchi_key)
-            .filter(molecules.canonical_smiles == canonical_smiles)
-            .first()
-        )
-
-        if existing_molecule:
-            molecule_id = existing_molecule[0]
-            log.debug(
-                "Existing molecule found for inchi_key=%s and canonical_smiles=%s: %s",
-                inchi_key,
-                canonical_smiles,
-                molecule_id
-            )
-        else:
-            log.debug(
-                "Creating new molecule for inchi_key=%s and canonical_smiles=%s",
-                inchi_key,
-                canonical_smiles
-            )
-
-            molecules.create(
-                standard_inchi,
-                canonical_smiles,
-                inchi_key,
-                exact_mass,
-                mol_formula
-            )
-
-            existing_molecule = (
-                Session.query(molecules.id)
-                .filter(molecules.inchi_key == inchi_key)
-                .filter(molecules.canonical_smiles == canonical_smiles)
-                .first()
-            )
-
-            if not existing_molecule:
-                log.error(
-                    "Molecule was created but could not be found again for inchi_key=%s and canonical_smiles=%s",
-                    inchi_key,
-                    canonical_smiles
-                )
-                return 0
-
-            molecule_id = existing_molecule[0]
-            log.debug("New molecule created with id=%s", molecule_id)
-
-        relation_exists = (
-            Session.query(mol_rel_data.id)
-            .filter(mol_rel_data.molecules_id == molecule_id)
-            .filter(mol_rel_data.package_id == package_id)
-            .first()
-        )
-
-        if not relation_exists:
-            mol_rel_data.create(molecule_id, package_id)
-            log.debug(
-                "Created molecule relation: molecules_id=%s, package_id=%s",
-                molecule_id,
-                package_id
-            )
-        else:
-            log.debug(
-                "Molecule relation already exists: molecules_id=%s, package_id=%s",
-                molecule_id,
-                package_id
-            )
-
-    except Exception as e:
-        log.error(f'Sent to db not possible because of this error {e}')
-        pass
-
-    return 0
+    log.info(
+        "Dataset %s molecule=%s relationship=%s molecule_package_id=%s",
+        identifier, result.get('molecule_package'),
+        result.get('ckan_relationship'), result.get('molecule_package_id'))
+    return result
 
 def _import_molecule_images(package):
     package_id = package['id']

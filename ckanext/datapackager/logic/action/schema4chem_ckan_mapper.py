@@ -71,6 +71,88 @@ frictionless_package_keys_to_exclude = [
     'extras'
 ]
 
+AUTHOR_DELIMITER = '; '
+
+
+def _extract_people(value):
+    """Normalize supported Schema.org Person/Organization representations."""
+    if value is None:
+        return []
+    if not isinstance(value, (list, tuple)):
+        value = [value]
+
+    people = []
+    seen_names = set()
+    for person in value:
+        email = None
+        if isinstance(person, str):
+            name = person.strip()
+        elif isinstance(person, dict):
+            name = person.get('name')
+            if not name:
+                name = ' '.join(
+                    part.strip() for part in (
+                        person.get('givenName') or '',
+                        person.get('familyName') or '')
+                    if isinstance(part, str) and part.strip())
+            if not name:
+                name = person.get('@id')
+            name = name.strip() if isinstance(name, str) else ''
+            email = person.get('email')
+            email = email.strip() if isinstance(email, str) else None
+        else:
+            continue
+
+        if not name or name in seen_names:
+            continue
+        seen_names.add(name)
+        people.append({'name': name, 'email': email or None})
+    return people
+
+
+def _legacy_contributors(contributors, roles):
+    if not isinstance(contributors, list):
+        return []
+    selected = []
+    for contributor in contributors:
+        if not isinstance(contributor, dict):
+            continue
+        role = contributor.get('role')
+        role = role.lower() if isinstance(role, str) else role
+        if role in roles:
+            # Older Frictionless contributors use title instead of name.
+            contributor = dict(contributor)
+            contributor['name'] = contributor.get('name') or contributor.get('title')
+            selected.append(contributor)
+    return _extract_people(selected)
+
+
+def _apply_people_metadata(outdict, fddict):
+    author_people = []
+    for source_key in ('creator', 'author', 'contributor'):
+        author_people = _extract_people(fddict.get(source_key))
+        if author_people:
+            break
+    if not author_people:
+        author_people = _legacy_contributors(
+            fddict.get('contributors'), (None, 'author'))
+
+    if author_people:
+        names = [person['name'] for person in author_people]
+        outdict['author'] = AUTHOR_DELIMITER.join(names)
+        if len(author_people) == 1 and author_people[0].get('email'):
+            outdict['author_email'] = author_people[0]['email']
+        log.info("Mapped Dataset %s authors=%s",
+                 fddict.get('identifier'), AUTHOR_DELIMITER.join(names))
+
+    maintainers = _legacy_contributors(
+        fddict.get('contributors'), ('maintainer',))
+    if maintainers:
+        outdict['maintainer'] = AUTHOR_DELIMITER.join(
+            person['name'] for person in maintainers)
+        if len(maintainers) == 1 and maintainers[0].get('email'):
+            outdict['maintainer_email'] = maintainers[0]['email']
+
 
 def _extract_resources(content):
     """
@@ -151,38 +233,8 @@ def package(fddict):
         #    if len(outdict['licenses']) == 1:
         #        outdict.pop('licenses', None)
 
-        if outdict.get('contributors'):
-            for c in outdict['contributors']:
-                if c.get('role') in [None, 'author']:
-                    outdict['author'] = c.get('title')
-                    outdict['author_email'] = c.get('email')
-                    break
-
-            for c in outdict['contributors']:
-                if c.get('role') == 'maintainer':
-                    outdict['maintainer'] = c.get('title')
-                    outdict['maintainer_email'] = c.get('email')
-                    break
-
-            # we remove contributors where we have extracted everything into
-            # ckan core that way it won't end up in extras
-            # this helps ensure that round tripping with ckan is good
-            # when have we extracted everything?
-            # if contributors has length 1 and role in author or maintainer
-            # or contributors == 2 and no of authors and maintainer types <= 1
-            if (
-                    (len(outdict.get('contributors')) == 1 and
-                     outdict['contributors'][0].get('role') in [None, 'author',
-                                                                'maintainer'])
-                    or
-                    (len(outdict.get('contributors')) == 2 and
-                     [c.get('role') for c in outdict['contributors']]
-                     not in (
-                             [None, None],
-                             ['maintainer', 'maintainer'],
-                             ['author', 'author']))
-            ):
-                outdict.pop('contributors', None)
+        _apply_people_metadata(outdict, fddict)
+        outdict.pop('contributors', None)
 
     except KeyError as e:
         log.debug(e)
