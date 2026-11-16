@@ -77,7 +77,7 @@ def _extract_resources(content):
     extract resources from the given dict
     """
     resources = []
-    url = content['url']
+    url = content.get('url')
     log.debug("URL of resource: %s" % url)
     if url:
         try:
@@ -86,7 +86,7 @@ def _extract_resources(content):
             resource_format = "HTML"
         resources.append(
             {
-                "name": content["name"],
+                "name": content.get("name") or content.get("identifier"),
                 "resource_type": resource_format,
                 "format": resource_format,
                 "url": url,
@@ -101,38 +101,20 @@ def package(fddict):
 
     outdict = dict(fddict)
 
-    log.debug(f"{fddict}")
-    try:
-        if fddict['inChI']:
-            outdict['inchi'] = fddict['inChI']
-        else:
-            outdict['inchi'] = ''
+    log.debug("Mapping Schema.org Dataset %s", fddict.get('identifier'))
+    outdict['inchi'] = fddict.get('inChI', '')
+    outdict['inchi_key'] = fddict.get('inChIKey', '')
+    outdict['smiles'] = fddict.get('smiles', '')
+    outdict['mol_formula'] = (
+        fddict.get('molecularFormula') or
+        fddict.get('chemicalComposition') or
+        ''
+    )
+    if fddict.get('monoisotopicMolecularWeight') is not None:
+        outdict['exactmass'] = fddict.get('monoisotopicMolecularWeight')
 
-        if fddict['inChIKey']:
-            outdict['inchi_key'] = fddict['inChIKey']
-        else:
-            outdict['inchi_key'] = ''
-
-        if fddict['smiles']:
-            outdict['smiles'] = fddict['smiles']
-        else:
-            outdict['smiles'] = ''
-
-        if fddict['molecularFormula']:
-            outdict['mol_formula'] = fddict['molecularFormula']
-
-        elif fddict['chemicalComposition']:
-            outdict['mol_formula'] = fddict['chemicalComposition']
-        else:
-            outdict['mol_formula'] = '-'
-
-        outdict['exactmass'] = fddict['monoisotopicMolecularWeight']
-
-    except Exception as e:
-        log.error(f'Missing Chemical Information and {e}')
-        pass
-
-    outdict['metadata_published'] = fddict['datePublished']
+    if fddict.get('datePublished') is not None:
+        outdict['metadata_published'] = fddict.get('datePublished')
     # map resources inside dataset
 
     if 'url' in fddict:
@@ -142,14 +124,24 @@ def package(fddict):
         outdict['license'] = fddict['license']
 
     try:
-        outdict['title'] = fddict['name']
-        outdict['name'] = fddict['identifier'].lower()
-        outdict['notes'] = fddict['description']
+        identifier = fddict.get('identifier') or fddict.get('name')
+        if identifier:
+            outdict['identifier'] = identifier
+            outdict['name'] = identifier.lower()
+        if fddict.get('name'):
+            outdict['title'] = fddict.get('name')
+        if fddict.get('description') is not None:
+            outdict['notes'] = fddict.get('description')
 
-        if fddict['measurementTechnique']:
-            measurement_technique = fddict['measurementTechnique']
-            outdict['measurement_technique'] = measurement_technique[0]['name']
-            outdict['measurement_technique_iri'] = measurement_technique[0]['url']
+        measurement_technique = fddict.get('measurementTechnique')
+        if measurement_technique:
+            if isinstance(measurement_technique, dict):
+                measurement_technique = [measurement_technique]
+            technique = measurement_technique[0]
+            if technique.get('name'):
+                outdict['measurement_technique'] = technique.get('name')
+            if technique.get('url'):
+                outdict['measurement_technique_iri'] = technique.get('url')
 
         #if 'licenses' in outdict and outdict['licenses']:
         #    outdict['license_id'] = outdict['licenses'][0].get('name')

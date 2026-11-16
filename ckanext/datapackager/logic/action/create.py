@@ -87,20 +87,20 @@ def package_create_from_datapackage(context, data_dict):
     url = data_dict.get('url')
     upload = data_dict.get('upload')
 
-    res = {}
     res_to_send = []
     if not url and not _upload_attribute_is_valid(upload):
         msg = {'url': ['you must define either a url or upload attribute']}
         raise toolkit.ValidationError(msg)
 
-    dp = _load_and_validate_datapackage(url=url, upload=upload)
+    datapackages = _load_and_validate_datapackage(url=url, upload=upload)
 
-    # considering each JSON file has one dataset and Chemcial Substance
+    # Prepare and validate the complete upload before making any CKAN changes.
+    prepared_datasets = _prepare_schemaorg_datasets(
+        [item.to_dict() for item in datapackages]
+    )
+    converted_datasets = [converter.package(item) for item in prepared_datasets]
 
-    for each_dp in dp:
-        send_dp_to_convert = each_dp.to_dict()
-        dataset_dict = converter.package(send_dp_to_convert)
-        # log.debug(f'{dataset_dict}')
+    for dataset_dict in converted_datasets:
 
         owner_org = data_dict.get('owner_org')
 
@@ -112,9 +112,6 @@ def package_create_from_datapackage(context, data_dict):
         if private:
             dataset_dict['private'] = toolkit.asbool(private)
 
-        name = dataset_dict['identifier']
-        name = name.lower()
-
         resources = dataset_dict.get('resources', [])
 
         # Create as draft by default so if there's any issue on creating the
@@ -122,23 +119,30 @@ def package_create_from_datapackage(context, data_dict):
         dataset_dict['state'] = 'draft'
         package_show_context = {'model': model, 'session': Session,
                                 'ignore_auth': True}
+        package_id = munge_title_to_name(dataset_dict['identifier'].lower())
+        package_existed = bool(_find_existing_package(
+            {'id': package_id}, package_show_context))
         res = _package_create_with_unique_name(package_show_context, dataset_dict)
 
         dataset_id = res['id']
 
-        resources_data = res['resources']
+        resources_data = res.get('resources', [])
 
         if not resources_data:
-            log.debug(f'{resource_data} is not present')
             try:
                 _create_resources(dataset_id, context, resources)
             except Exception as e:
-                log.error(e)
-                try:
-                    toolkit.get_action('package_delete')(
-                        context, {'id': dataset_id})
-                except Exception as e2:
-                    six.raise_from(e, e2)
+                log.exception("Resource import failed for Dataset %s", dataset_dict['identifier'])
+                if not package_existed:
+                    try:
+                        toolkit.get_action('package_delete')(
+                            context, {'id': dataset_id})
+                    except Exception as delete_error:
+                        six.raise_from(e, delete_error)
+                raise toolkit.ValidationError({
+                    'resources': ['Resource import failed for Dataset {}'.format(
+                        dataset_dict['identifier'])]
+                })
 
         res['state'] = 'active'
 
@@ -148,26 +152,134 @@ def package_create_from_datapackage(context, data_dict):
         log.debug(f'dataset {res["id"]} will be updated')
         res_final = remove_extras_if_duplicates_exist(res)
 
-        # log.debug(f'The final Res for dataset {res["id"]}: {res_final}')
         res_to_send.append(res_final)
-        # log.debug(f'list of ress: {res_to_send}').
 
     package_show_context = {'model': model, 'session': Session,
                             'ignore_auth': True}
     iteration_count = 0  # Initialize counter
     for dataset in res_to_send:
         iteration_count += 1
-        try:
-            # Update the dataset
-            updated_dataset = toolkit.get_action('package_update')(package_show_context, dataset)
-            log.debug(f"Updated dataset: {updated_dataset['id']}")
-            updated_datasets.append(updated_dataset)
-        except toolkit.ValidationError as e:
-            log.debug(f"Error updating dataset {dataset['id']}: {e.error_dict}")
-        except Exception as e:
-            log.debug(f"Unhandled error for dataset {dataset['id']}: {e}")
+        updated_dataset = toolkit.get_action('package_update')(
+            package_show_context, dataset)
+        log.debug("Updated dataset: %s", updated_dataset['id'])
+        updated_datasets.append(updated_dataset)
     log.debug(f'Number of dataset updated {iteration_count}')
     return updated_datasets
+
+
+def _schemaorg_type(item):
+    object_type = item.get('@type', 'Dataset')
+    if isinstance(object_type, list):
+        object_type = object_type[0] if object_type else 'Dataset'
+    return str(object_type).rsplit('/', 1)[-1].rsplit('#', 1)[-1]
+
+
+def _prepare_schemaorg_datasets(objects):
+    """Pair Schema.org objects and return Dataset dicts ready for mapping."""
+    grouped = {}
+    order = []
+
+    for item in objects:
+        if not isinstance(item, dict):
+            log.error("Invalid Schema.org object type %s", type(item).__name__)
+            raise toolkit.ValidationError({
+                'datapackage': ['Every top-level item must be a JSON object']
+            })
+
+        object_type = _schemaorg_type(item)
+        identifier = item.get('identifier') or (
+            item.get('name') if object_type == 'Dataset' else None)
+        if not identifier:
+            log.error("Missing identifier for Schema.org %s object", object_type)
+            raise toolkit.ValidationError({
+                'identifier': ['{} object is missing an identifier'.format(object_type)]
+            })
+
+        normalized_identifier = six.text_type(identifier).lower()
+        if normalized_identifier not in grouped:
+            grouped[normalized_identifier] = {
+                'identifier': identifier, 'datasets': [], 'substances': []}
+            order.append(normalized_identifier)
+
+        if object_type == 'Dataset':
+            grouped[normalized_identifier]['datasets'].append(item)
+        elif object_type == 'ChemicalSubstance':
+            grouped[normalized_identifier]['substances'].append(item)
+        elif object_type == 'MolecularEntity':
+            log.error("Top-level MolecularEntity is not supported for identifier %s", identifier)
+            raise toolkit.ValidationError({
+                'datapackage': [
+                    'MolecularEntity {} must be nested in hasBioChemEntityPart'.format(identifier)]
+            })
+        else:
+            log.error("Unsupported Schema.org object type %s for identifier %s",
+                      object_type, identifier)
+            raise toolkit.ValidationError({
+                'datapackage': ['Unsupported object type {} for identifier {}'.format(
+                    object_type, identifier)]
+            })
+
+    prepared = []
+    chemical_mapping = {
+        'inChI': 'inChI',
+        'inChIKey': 'inChIKey',
+        'smiles': 'smiles',
+        'molecularFormula': 'molecularFormula',
+        'monoisotopicMolecularWeight': 'monoisotopicMolecularWeight',
+    }
+    for normalized_identifier in order:
+        group = grouped[normalized_identifier]
+        identifier = group['identifier']
+        if len(group['datasets']) != 1:
+            log.error("Expected exactly one Dataset for identifier %s; found %d",
+                      identifier, len(group['datasets']))
+            raise toolkit.ValidationError({
+                'datapackage': [
+                    'Identifier {} must have exactly one Dataset object; found {}'.format(
+                        identifier, len(group['datasets']))]
+            })
+        if len(group['substances']) > 1:
+            log.error("Expected at most one ChemicalSubstance for identifier %s; found %d",
+                      identifier, len(group['substances']))
+            raise toolkit.ValidationError({
+                'datapackage': [
+                    'Identifier {} has more than one ChemicalSubstance object'.format(identifier)]
+            })
+
+        dataset = dict(group['datasets'][0])
+        if group['substances']:
+            substance = group['substances'][0]
+            entity_parts = substance.get('hasBioChemEntityPart') or []
+            if isinstance(entity_parts, dict):
+                entity_parts = [entity_parts]
+            if not isinstance(entity_parts, list):
+                log.error("Invalid hasBioChemEntityPart for identifier %s", identifier)
+                raise toolkit.ValidationError({
+                    'hasBioChemEntityPart': [
+                        'Expected an object or list for identifier {}'.format(identifier)]
+                })
+
+            molecular_entities = [
+                part for part in entity_parts
+                if isinstance(part, dict) and _schemaorg_type(part) == 'MolecularEntity'
+            ]
+            if len(molecular_entities) > 1:
+                log.error("Multiple MolecularEntity objects for identifier %s", identifier)
+                raise toolkit.ValidationError({
+                    'hasBioChemEntityPart': [
+                        'Identifier {} has more than one MolecularEntity'.format(identifier)]
+                })
+            if molecular_entities:
+                entity = molecular_entities[0]
+                for source_key, target_key in chemical_mapping.items():
+                    if entity.get(source_key) is not None:
+                        dataset[target_key] = entity.get(source_key)
+            if not dataset.get('molecularFormula') and substance.get('chemicalComposition'):
+                dataset['chemicalComposition'] = substance.get('chemicalComposition')
+
+        prepared.append(dataset)
+
+    return prepared
 
 
 # def _process_cif_and_create_package(context, data_dict):
@@ -461,39 +573,19 @@ def _package_create_with_unique_name(context, dataset_dict):
 
 
 def _handle_existing_package(context, dataset_dict):
-    log.debug(f'Handle existing package {dataset_dict}')
-    resError = None
-    try:
-        log.info(f'Package with GUID {dataset_dict["id"]} exists and is skipped')
-        res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
-        log.debug(f'Package with GUID {res}')
+    log.info("Updating existing package %s", dataset_dict['id'])
+    res = toolkit.get_action('package_show')(context, {'id': dataset_dict['id']})
 
-        if not res['license_title']:
-            log.debug(f'Updating license...')
-            res['license_id'] = _extract_license_id(context, dataset_dict)
-            log.debug("Updated license")
-        else:
-            return res
-        try:
-            if not res['mol_formula']:
-                log.debug(f'Updating mol formula...')
-                res['mol_formula'] = dataset_dict['mol_formula']
-                log.debug(f'added Molecular formula ')
+    if not res.get('license_id') and dataset_dict.get('license'):
+        license_id = _extract_license_id(context, dataset_dict)
+        if license_id:
+            res['license_id'] = license_id
 
-            elif res['license_id'] and res['mol_formula']:
-                resError = res
-                log.debug(f'Nothing to update.Both Licenses and Molecular formula exits')
-            else:
-                return res
+    for field in ('inchi', 'inchi_key', 'smiles', 'mol_formula', 'exactmass'):
+        if not res.get(field) and dataset_dict.get(field) not in (None, ''):
+            res[field] = dataset_dict.get(field)
 
-        except Exception as e:
-            log.error(f"line 172 {e}")
-            pass
-
-        return remove_extras_if_duplicates_exist(res)
-    except toolkit.ValidationError as e:
-        log.error(f'Validation error at package Create #line177 {e}')
-        return resError  # Or a more appropriate error handling
+    return remove_extras_if_duplicates_exist(res)
 
 
 def _create_new_package(context, dataset_dict):
@@ -551,6 +643,12 @@ def _load_and_validate_datapackage(url=None, upload=None):
             decoded_upload = byte_data.decode('utf-8')
             try:
                 json_data_upload_list = json.loads(decoded_upload)
+                if isinstance(json_data_upload_list, dict):
+                    json_data_upload_list = [json_data_upload_list]
+                if not isinstance(json_data_upload_list, list):
+                    raise toolkit.ValidationError({
+                        'datapackage': ['Uploaded JSON must be an object or an array of objects']
+                    })
                 if toolkit.check_ckan_version(min_version="2.9"):
                     for json_data_upload in json_data_upload_list:
                         # Converted JSON to CKAN Dict
@@ -559,11 +657,13 @@ def _load_and_validate_datapackage(url=None, upload=None):
                 else:
                     dp = datapackage.DataPackage(upload.file)
 
-            except json.JSONDecodeError:
-                log.error(f'Invalid JSON file # line 245')
+            except ValueError as e:
+                log.error("Invalid uploaded JSON: %s", e)
+                raise toolkit.ValidationError({'datapackage': ['Invalid JSON upload']})
 
         else:
             dp = datapackage.DataPackage(url)
+            dp_list.append(dp)
 
     except (datapackage.exceptions.DataPackageException,
             datapackage.exceptions.SchemaError,
@@ -619,20 +719,11 @@ def _create_resources(dataset_id, context, resources):
 
         else:
             # TODO: Investigate why in test_controller the resource['url'] is a list
-            if type(resource['url']) is list:
+            if isinstance(resource.get('url'), list):
                 resource['url'] = resource['url'][0]
-                log.debug("RESOURCING")
-
-                try:
-                    toolkit.get_action('resource_create')(context, resource)
-                    log.debug("Create a new resource")
-                except Exception as e:
-                    # if 'There is a schema field with the same name' in e.error_dict.get('extras', []):
-                    if e is True:
-                        toolkit.get_action('resource_update')(context, resource)
-                    else:
-                        pass
-            # log.debug('Resource created')
+            toolkit.get_action('resource_create')(context, resource)
+            log.debug("Created resource %s for package %s",
+                      resource.get('name'), dataset_id)
 
 
 def _create_and_upload_resource_with_inline_data(context, resource):
@@ -687,17 +778,17 @@ def _upload_attribute_is_valid(upload):
 
 def _extract_license_id(context, content):
     package_license = None
-    try:
-        content_license = content['license']
-        license_list = toolkit.get_action('license_list')(context.copy(), {})
+    content_license = content.get('license')
+    if not content_license:
+        return package_license
+    license_list = toolkit.get_action('license_list')(context.copy(), {})
 
-        for license_name in license_list:
-            if content_license == license_name['id'] or content_license == license_name['url'] or content_license == \
-                    license_name['title']:
-                package_license = license_name['id']
-    except Exception as e:
-        log.error(f'Error extracting license: {e}')
-        pass
+    for license_name in license_list:
+        if content_license in (
+                license_name.get('id'), license_name.get('url'),
+                license_name.get('title')):
+            package_license = license_name.get('id')
+            break
 
     return package_license
 
@@ -708,11 +799,10 @@ def _find_existing_package(package_dict, context):
     """
     data_dict = {'id': package_dict['id']}
     try:
-
         return toolkit.get_action('package_show')(context, data_dict)
-    except Exception as e:
-            log.error(f' find existing package error {e}')
-            return 0
+    except toolkit.ObjectNotFound:
+        log.debug("No existing package found for %s", package_dict['id'])
+        return None
 
 
 def _send_to_db(package):
@@ -734,11 +824,11 @@ def _send_to_db(package):
     log.debug(package)
 
     try:
-        standard_inchi = package['inchi']
-        inchi_key = package['inchi_key']
-        canonical_smiles = package['smiles']
-        exact_mass = package['exactmass']
-        mol_formula = package['mol_formula']
+        standard_inchi = package.get('inchi', '')
+        inchi_key = package.get('inchi_key', '')
+        canonical_smiles = package.get('smiles', '')
+        exact_mass = package.get('exactmass')
+        mol_formula = package.get('mol_formula', '')
 
         existing_molecule = (
             Session.query(molecules.id)
@@ -818,9 +908,9 @@ def _send_to_db(package):
 def _import_molecule_images(package):
     package_id = package['id']
     try:
-        if package['inchi'] and package['inchi_key']:
-            standard_inchi = package['inchi']
-            inchi_key = package['inchi_key']
+        if package.get('inchi') and package.get('inchi_key'):
+            standard_inchi = package.get('inchi')
+            inchi_key = package.get('inchi_key')
 
             if standard_inchi.startswith('InChI'):
                 molecule = inchi.MolFromInchi(standard_inchi)
@@ -837,8 +927,8 @@ def _import_molecule_images(package):
                     log.error(f"_import_molecule_images not possible: {e}")
             return 0
 
-        elif package['inchi']:
-            standard_inchi = package['inchi']
+        elif package.get('inchi'):
+            standard_inchi = package.get('inchi')
             if standard_inchi.startswith('InChI'):
                 molecule = inchi.MolFromInchi(standard_inchi)
                 inchi_key = inchi.InchiToInchiKey(standard_inchi)
@@ -858,7 +948,7 @@ def _import_molecule_images(package):
             return 0
 
     except Exception as e:
-        log.error(f"Exception occured # line 483{e}")
+        log.error("Molecule image import failed for package %s: %s", package_id, e)
         return 0
 
 
